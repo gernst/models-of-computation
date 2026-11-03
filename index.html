@@ -25,6 +25,7 @@
     <label>Language <select id="language"></select></label>
     <label>Example <select id="example"></select></label>
     <button id="new" title="Start a new, empty program (your current program is kept)">New</button>
+    <button id="duplicate" title="Make a copy of this program and open it">Duplicate</button>
   </div>
 
   <div class="editor">
@@ -39,6 +40,7 @@
     <label>Inputs <input id="inputs" placeholder="e.g. 3, 4"></label>
     <button id="run" class="primary" title="Ctrl+Enter">Run</button>
     <button id="share" title="Store the program on the permalink server and get a link to it" hidden>Share</button>
+    <button id="copyLink" title="Copy the link to this shared program to the clipboard" hidden>Copy Permalink</button>
     <label><input type="checkbox" id="trace"> Trace</label>
     <label>Step limit <input id="maxSteps" type="number" value="1000000" min="1"></label>
     <button id="delete" class="danger" title="Delete this program from your browser">Delete</button>
@@ -64,7 +66,11 @@
 
 Use the names from INPUT and OUTPUT (default: inputs x1, x2, …, result x0).
 Inputs refer to their initial values.
-Operators: || &amp;&amp; ! == != &lt; &lt;= &gt; &gt;= + - * / % ^ ( )
+Operators, from loosest to tightest:
+  &lt;==&gt;   ==&gt;   OR   AND   NOT   == != &lt; &lt;= &gt; &gt;=   + -   * / %   ^
+  IF c THEN a ELSE b    e.g.  ENSURES r == IF x &gt;= y THEN x - y ELSE 0
+Numbers and conditions are kept apart: IF, AND, OR, NOT, ==&gt; and &lt;==&gt; need
+conditions such as comparisons, and a whole REQUIRES/ENSURES line must be a condition.
 "Check" runs the program on all inputs up to the given maximum. This is testing, not a proof.</pre>
   </details>
   <footer><a href="impressum.html">Impressum &amp; Datenschutz</a></footer>

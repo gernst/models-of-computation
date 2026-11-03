@@ -21,7 +21,43 @@ function parseWhile(code) {
     if (f.params.length !== c.args.length)
       throw new LangError(`function '${c.f}' has ${f.params.length} parameter(s), but is called with ${c.args.length}`, c.line);
   }
-  return { ...header, vars: [...p.vars], body, funs: p.funs };
+  const warnings = [];
+  checkWhileInit(body, startState(header), warnings);
+  for (const f of p.funs.values()) {
+    const st = new InitState(f.params, false);
+    checkWhileInit(f.body, st, warnings);
+    if (!st.has(f.result)) warnUninitialized(warnings, f.result, f.returnLine);
+  }
+  return { ...header, vars: [...p.vars], body, funs: p.funs, warnings };
+}
+
+/** Warn about reading variables before they have a value (see InitState in common.js). */
+function checkWhileInit(stmts, st, warnings) {
+  const read = (x, line) => { if (!st.has(x)) warnUninitialized(warnings, x, line); };
+  const readCondition = (c, line) => {
+    if (c.var !== undefined) return read(c.var, line);
+    readCondition(c.left, line);
+    if (c.right) readCondition(c.right, line);
+  };
+  for (const s of stmts) {
+    if (s.type === "assign") {
+      if (s.y !== null) read(s.y, s.line);
+      st.add(s.x);
+    } else if (s.type === "call") {
+      for (const a of s.args) if (a.var !== undefined) read(a.var, s.line);
+      st.add(s.x);
+    } else if (s.type === "if") {
+      readCondition(s.x, s.line);
+      const a = st.copy(), b = st.copy();
+      checkWhileInit(s.then, a, warnings);
+      checkWhileInit(s.otherwise, b, warnings);
+      a.meet(b);
+      st.defined = a.defined;
+    } else { // while
+      readCondition(s.x, s.line);
+      checkWhileInit(s.body, st.copy(), warnings);
+    }
+  }
 }
 
 /** A sequence of statements, optionally separated by semicolons. Function definitions only at the top level. */
@@ -253,6 +289,7 @@ LANGUAGES.push({
   help: `WHILE programs compute on integers …, -2, -1, 0, 1, 2, …
 
 Header (optional):
+  PROGRAM name          the name of the program
   INPUT a, b            the inputs, in this order   (default: x1, x2, …)
   OUTPUT c              the result                  (default: x0)
 
@@ -274,7 +311,8 @@ Functions (at the top level, before or after the main program; may be recursive)
   }
 Parameters are passed by value; all other variables of a function are local and start at 0.
 
-Variables can have any name; all non-input variables start at 0.
+Variables can have any name; all non-input variables start at 0, but reading one
+before assigning it gives a warning.
 Comments: // until the end of the line.`,
   parse: parseWhile,
   run: runWhile,
@@ -284,9 +322,10 @@ Comments: // until the end of the line.`,
   examples: [
     {
       name: "Addition", inputs: "3, 4", code:
-`INPUT x, y
+`PROGRAM Addition
+INPUT x, y
 OUTPUT z
-REQUIRES x >= 0 && y >= 0
+REQUIRES x >= 0 AND y >= 0
 
 z = 0
 WHILE (x != 0) {
@@ -300,7 +339,8 @@ WHILE (y != 0) {
 ` },
     {
       name: "Subtraction", inputs: "3, 5", code:
-`INPUT x, y
+`PROGRAM Subtraction
+INPUT x, y
 OUTPUT diff
 REQUIRES y >= 0
 
@@ -312,7 +352,8 @@ WHILE (y != 0) {
 ` },
     {
       name: "Absolute value", inputs: "-3", code:
-`INPUT x
+`PROGRAM AbsoluteValue
+INPUT x
 OUTPUT abs
 
 // The only test is "!= 0", so count up and down at the same time:
@@ -328,9 +369,10 @@ WHILE (up != 0 AND down != 0) {
 ` },
     {
       name: "Multiplication (function)", inputs: "3, 4", code:
-`INPUT x, y
+`PROGRAM Multiplication
+INPUT x, y
 OUTPUT p
-REQUIRES x >= 0 && y >= 0
+REQUIRES x >= 0 AND y >= 0
 
 FUN add(a, b) {
   WHILE (b != 0) {
@@ -348,7 +390,8 @@ WHILE (y != 0) {
 ` },
     {
       name: "Fibonacci (recursive)", inputs: "10", code:
-`INPUT n
+`PROGRAM Fibonacci
+INPUT n
 OUTPUT f
 REQUIRES n >= 0
 
@@ -382,7 +425,8 @@ f = fib(n)
 ` },
     {
       name: "Infinite loop", inputs: "1", code:
-`// Terminates only for n = 0 (try the step limit).
+`PROGRAM InfiniteLoop
+// Terminates only for n = 0 (try the step limit).
 INPUT n
 OUTPUT n
 

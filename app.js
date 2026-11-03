@@ -117,6 +117,17 @@ function newProgram() {
   else show("", "");
 }
 
+function duplicateProgram() {
+  const prev = currentProgram(), example = lang.examples.findIndex(ex => ex.code === editor.value);
+  const id = addProgram(programs, editor.value, $("inputs").value);
+  savePrograms(lang, programs);
+  showProgram(programs.find(p => p.id === id));
+  notice("This is a copy, which you can change. The original is kept.", "Open the original", () => {
+    if (prev) showProgram(prev); else showExample(Math.max(0, example));
+    show("", "");
+  });
+}
+
 function deleteCurrent() {
   const l = lang, p = deleteProgram(programs, current);
   if (!p) return;
@@ -144,20 +155,32 @@ function syncScroll() {
   highlight.scrollLeft = editor.scrollLeft;
 }
 
-const SPEC_KEYWORDS = ["REQUIRES", "ENSURES"];
+const HEADER_WORDS = ["PROGRAM", "INPUT", "OUTPUT", "REQUIRES", "ENSURES"]; // purple at the start of a line
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;" };
 const escapeHtml = s => s.replace(/[&<>]/g, c => HTML_ESCAPES[c]);
 
-/** Colour comments, numbers, the language's keywords and REQUIRES/ENSURES. Returns HTML. */
+/**
+ * Colour comments, numbers, the language's keywords and the header words. Returns HTML.
+ * In REQUIRES/ENSURES lines, the keywords of the condition language (AND, IF, …) are coloured instead,
+ * the same in every language.
+ */
 function highlightCode(src, keywords) {
+  return src.split("\n").map(line => /^\s*(REQUIRES|ENSURES)\b/i.test(line)
+    ? highlightLine(line, SPEC_KEYWORDS, true)
+    : highlightLine(line, keywords, lang.keywordsAnyCase)).join("\n");
+}
+
+function highlightLine(line, keywords, anyCase) {
   const span = (cls, text) => `<span class="${cls}">${escapeHtml(text)}</span>`;
-  return src.replace(/(\/\/[^\n]*)|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+)|([&<>])/g, (m, comment, word, num, esc) => {
+  const lineStart = /^\s*/.exec(line)[0].length;
+  return line.replace(/(\/\/.*)|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+)|([&<>])/g, (m, comment, word, num, esc, offset) => {
     if (comment) return span("hl-comment", comment);
     if (num) return span("hl-number", num);
     if (esc) return HTML_ESCAPES[esc];
     const upper = word.toUpperCase();
-    if (SPEC_KEYWORDS.includes(upper)) return span("hl-spec", word);
-    if (keywords.includes(word) || (lang.keywordsAnyCase && keywords.includes(upper))) return span("hl-keyword", word);
+    if (offset === lineStart && HEADER_WORDS.includes(upper) && !/^\s*:?=/.test(line.slice(offset + word.length)))
+      return span("hl-spec", word);
+    if (keywords.includes(word) || (anyCase && keywords.includes(upper))) return span("hl-keyword", word);
     return word;
   });
 }
@@ -194,6 +217,12 @@ function parseInputs(text) {
   return parts.map(BigInt);
 }
 
+/** The warnings of the static checks (e.g. reading a variable before it has a value), as text. */
+function warningsText(program) {
+  const ws = program?.warnings ?? [];
+  return ws.length ? ws.map(w => `Warning in line ${w.line}: ${w.message}`).join("\n") + "\n\n" : "";
+}
+
 function run() {
   const ctx = { steps: 0, maxSteps: Number($("maxSteps").value) || 1000000, trace: $("trace").checked ? [] : null };
   const traceText = () => !ctx.trace ? "" :
@@ -202,17 +231,18 @@ function run() {
   // all variables, one per line (only for languages that set ctx.vars)
   const varsText = () => !ctx.vars ? "" :
     "\n\nVariables:\n" + [...ctx.vars].map(([x, v]) => `  ${x} = ${v}`).join("\n");
+  let program = null;
   try {
-    const program = lang.parse(splitDirectives(editor.value).code);
+    program = lang.parse(splitDirectives(editor.value).code);
     const inputs = parseInputs($("inputs").value);
     const t0 = performance.now();
     const result = lang.run(program, inputs, ctx);
     const ms = (performance.now() - t0).toFixed(1);
     const { output: name } = signatureOf(lang, program);
-    show(`Result: ${name} = ${result}\nSteps: ${ctx.steps}   (${ms} ms)` + varsText() + traceText(), "ok");
+    show(warningsText(program) + `Result: ${name} = ${result}\nSteps: ${ctx.steps}   (${ms} ms)` + varsText() + traceText(), "ok");
   } catch (e) {
     showError(e);
-    output.textContent += varsText() + traceText();
+    output.textContent = warningsText(program) + output.textContent + varsText() + traceText();
   }
 }
 
@@ -220,16 +250,17 @@ function check() {
   const maxValue = Math.max(0, Number($("maxValue").value) || 0);
   try {
     const r = checkProgram(lang, editor.value, maxValue, Number($("maxSteps").value) || 1000000);
+    const warnings = warningsText(lang.parse(splitDirectives(editor.value).code));
     const skipped = r.skipped ? `, ${r.skipped} skipped by REQUIRES` : "";
     if (r.ok) {
-      show(`✓ All ${r.tested} test case(s) passed (inputs from ${lang.integers ? -maxValue : 0} to ${maxValue}${skipped}).\n` +
+      show(warnings + `✓ All ${r.tested} test case(s) passed (inputs from ${lang.integers ? -maxValue : 0} to ${maxValue}${skipped}).\n` +
            "This is testing, not a proof.", "ok");
       return;
     }
     const args = r.inputs.map((v, i) => `${r.names[i]} = ${v}`).join(", ") || "no inputs";
-    if (r.message) show(`✗ Counterexample: ${args}: ${r.message}`, "bad");
+    if (r.message) show(warnings + `✗ Counterexample: ${args}: ${r.message}`, "bad");
     else {
-      show(`✗ Counterexample: ${args}  →  ${r.output} = ${r.result}\nENSURES in line ${r.line} is false.`, "bad");
+      show(warnings + `✗ Counterexample: ${args}  →  ${r.output} = ${r.result}\nENSURES in line ${r.line} is false.`, "bad");
       selectLine(r.line);
     }
   } catch (e) {
@@ -248,6 +279,7 @@ const permalinkUrl = id => location.href.split("#")[0] + "#ex=" + id;
 
 /** Show the link of the program in the address bar, or remove it (id = null). */
 function setPermalink(id) {
+  $("copyLink").hidden = !(id && PERMALINK_SERVER);
   const url = id ? permalinkUrl(id) : location.href.split("#")[0];
   if (url !== location.href) history.replaceState(null, "", url);
 }
@@ -306,6 +338,8 @@ LANGUAGES.forEach(l => option($("language"), l.id, l.name));
 $("language").addEventListener("change", e => selectLanguage(e.target.value));
 $("example").addEventListener("change", e => onMenuChange(e.target.value));
 $("new").addEventListener("click", newProgram);
+$("duplicate").addEventListener("click", duplicateProgram);
+$("copyLink").addEventListener("click", () => showLink(currentProgram().permalink, "Permalink"));
 $("delete").addEventListener("click", deleteCurrent);
 $("run").addEventListener("click", run);
 $("check").addEventListener("click", check);

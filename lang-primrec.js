@@ -126,7 +126,8 @@ function evalPR(t, args, ctx) {
 LANGUAGES.push({
   id: "primrec",
   name: "PRIMREC",
-  help: `A program is a list of definitions   name = term
+  help: `A program is a list of definitions   name = term,
+optionally preceded by a line  PROGRAM name  (the name of the program).
 The function named 'main' (otherwise the last one) is evaluated.
 
   zero                  the constant 0 (arity 0);  zero[n]: constant 0 with n arguments
@@ -151,14 +152,18 @@ In ENSURES / REQUIRES, x1, x2, … are the arguments and x0 is the result.`,
   examples: [
     {
       name: "Addition", inputs: "3, 4", code:
-`// add(x, 0)   = x
+`PROGRAM Addition
+
+// add(x, 0)   = x
 // add(x, y+1) = succ(add(x, y))
 
 add = REC(pi[1,1], COMP(succ, pi[3,3]))
 ` },
     {
       name: "Predecessor", inputs: "5", code:
-`// pred(0)   = 0
+`PROGRAM Predecessor
+
+// pred(0)   = 0
 // pred(y+1) = y
 
 pred = REC(zero, pi[2,1])

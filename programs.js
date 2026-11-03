@@ -65,14 +65,15 @@ function addProgram(list, code, inputs, permalink) {
   return p.id;
 }
 
-/** Text for the Example menu, e.g. "16:42 · 23 lines · shared". */
+/** Text for the Example menu, e.g. "Addition · 16:42 · shared" or, without PROGRAM line, "16:42 · 23 lines". */
 function programLabel(p, now = new Date()) {
   const d = new Date(p.edited);
   const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const sameDay = d.toDateString() === now.toDateString();
   const when = sameDay ? time : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + " " + time;
   const lines = p.code.split("\n").filter(l => l.trim() !== "").length;
-  return `${when} · ${lines} line${lines === 1 ? "" : "s"}` + (p.permalink ? " · shared" : "");
+  const name = programName(p.code);
+  return (name ? `${name} · ${when}` : `${when} · ${lines} line${lines === 1 ? "" : "s"}`) + (p.permalink ? " · shared" : "");
 }
 
 /** Remove an entry; returns it (for undo) or null. */

@@ -35,21 +35,23 @@ function parseError(langId, code) {
 // What each example computes (the examples themselves carry no ENSURES line).
 const SPECS = {
   "loop/Addition": "z == x + y",
-  "loop/Predecessor": "(n == 0 && pred == 0) || (n > 0 && pred == n - 1)",
-  "loop/Subtraction": "(x >= y && d == x - y) || (x < y && d == 0)",
+  "loop/Predecessor": "pred == IF n == 0 THEN 0 ELSE n - 1",
+  "loop/Subtraction": "d == IF x >= y THEN x - y ELSE 0",
   "while/Addition": "z == x + y",
   "while/Subtraction": "diff == x - y",
-  "while/Absolute value": "(x >= 0 && abs == x) || (x < 0 && abs == -x)",
+  "while/Absolute value": "(x >= 0 ==> abs == x) AND (x < 0 ==> abs == -x)",
   "while/Multiplication (function)": "p == x * y",
   "while/Fibonacci (recursive)": "", // not expressible in ENSURES; see the test below
   "primrec/Addition": "x0 == x1 + x2",
-  "primrec/Predecessor": "(x1 == 0 && x0 == 0) || (x1 > 0 && x0 == x1 - 1)",
+  "primrec/Predecessor": "x0 == IF x1 == 0 THEN 0 ELSE x1 - 1",
 };
 
 // Every example parses and runs, and satisfies its specification.
 for (const lang of LANGUAGES) {
   for (const ex of lang.examples) {
     test(`${lang.name} / ${ex.name}`, () => {
+      const warnings = lang.parse(splitDirectives(ex.code).code).warnings ?? [];
+      assert(warnings.length === 0, "warnings: " + warnings.map(w => `line ${w.line}: ${w.message}`).join("; "));
       if (ex.name === "Infinite loop") return;
       const inputs = (ex.inputs ?? "").split(/[\s,]+/).filter(Boolean);
       run(lang.id, ex.code, inputs);
@@ -168,6 +170,47 @@ test("check finds counterexample", () => {
   assert(!r.ok && r.line === 1, "no counterexample");
 });
 
+// The assertion language.
+const evalSpec = (text, env = {}) => vm.runInContext("(t, env) => evalExpr(parseExpr(t, 1), env)", ctx)(text, env);
+test("spec: AND, OR, NOT", () => {
+  assert(evalSpec("1 < 2 AND NOT 2 < 1 or 1 > 2") === 1n, "AND/NOT/or");
+  assert(evalSpec("NOT (1 < 2 OR 2 < 1)") === 0n, "NOT ( … )");
+  assert(evalSpec("NOT x < 1 AND NOT NOT x == 2", { x: 2n }) === 1n, "NOT applies to the whole comparison");
+});
+test("spec: ==> and <==>", () => {
+  const T = "1 < 2", F = "2 < 1";
+  const cases = [[`${F} ==> ${F}`, 1n], [`${F} ==> ${T}`, 1n], [`${T} ==> ${F}`, 0n], [`${T} ==> ${T}`, 1n],
+                 [`${T} <==> ${T}`, 1n], [`${F} <==> ${F}`, 1n], [`${T} <==> ${F}`, 0n],
+                 [`${T} ==> ${T} ==> ${F}`, 0n], [`${F} ==> ${T} ==> ${F}`, 1n], // right-associative
+                 ["x > 0 ==> x / x == 1", 1n]];                                  // no division by zero for x = 0
+  for (const [t, v] of cases) assert(evalSpec(t, { x: 0n }) === v, t);
+});
+test("spec: IF THEN ELSE", () => {
+  assert(evalSpec("(IF x > 0 THEN x ELSE -x) == 3", { x: -3n }) === 1n, "abs");
+  assert(evalSpec("(IF x == 0 THEN 0 ELSE 10 / x) == 0", { x: 0n }) === 1n, "only one branch is evaluated");
+  assert(evalSpec("6 == 1 + IF 1 > 2 THEN 1 ELSE 2 + 3") === 1n, "ELSE extends to the right");
+  assert(evalSpec("IF 1 < 2 THEN x > 0 ELSE x < 0", { x: 1n }) === 1n, "branches can be conditions");
+});
+test("spec: conditions must be conditions", () => {
+  for (const t of ["x", "IF x THEN 1 ELSE 2", "x AND x > 0", "NOT x", "x ==> x > 0", "(x > 0) + 1",
+                   "(x > 0) == (x > 1)", "IF x > 0 THEN 1 ELSE x > 0", "x + 1"]) {
+    let msg = null;
+    try { evalSpec(t, { x: 1n }); } catch (e) { msg = e.message; }
+    assert(msg !== null, "accepted: " + t);
+  }
+});
+test("spec: number compared with a condition: helpful message", () => {
+  try { evalSpec("r == (x == 1 OR y == 1)", { r: 1n, x: 1n, y: 0n }); }
+  catch (e) { assert(/IF b THEN 1 ELSE 0/.test(e.message), e.message); return; }
+  throw new Error("accepted");
+});
+test("spec: 1/0 results via IF", () =>
+  assert(evalSpec("r == IF x == 1 OR y == 1 THEN 1 ELSE 0", { r: 1n, x: 0n, y: 1n }) === 1n, "wrong"));
+test("spec: && is rejected with a hint", () => {
+  try { evalSpec("1 < 2 && 1 < 2"); } catch (e) { assert(/AND/.test(e.message), e.message); return; }
+  throw new Error("no error");
+});
+
 // Permalinks: answers as returned by the permalink service (shortened).
 test("permalink: LANGUAGE line round trip", () => {
   const code = "INPUT x\nOUTPUT y\ny = x + 1\n";
@@ -228,10 +271,43 @@ test("programs: empty programs are dropped, except the current one", () => {
   const a = addProgram(list, "", ""), b = addProgram(list, "  \n", ""), c = addProgram(list, "x = 1", "");
   assert(dropEmptyPrograms(list, a) && list.length === 2 && list.some(p => p.id === a) && !list.some(p => p.id === b), "wrong programs dropped");
 });
+// Static checks: variables without a value.
+const warningsOf = (langId, code) => byId(langId).parse(code).warnings.map(w => w.x + "@" + w.line).join(" ");
+test("LOOP over a variable without a value is an error", () => {
+  const e = parseError("loop", "INPUT n\nOUTPUT r\nLOOP (k) { r = r + 1 }");
+  assert(e.line === 3 && /no value/.test(e.message), e.message);
+  parseError("loop", "INPUT n\nLOOP (n) { k = 0 }\nLOOP (k) { n = n + 1 }"); // assigned only inside a loop
+  byId("loop").parse("INPUT n\nk = 0\nLOOP (n) { LOOP (k) { k = k + 1 } }");  // fine
+  byId("loop").parse("LOOP (x1) { x0 = 0 }");                                    // x1: default input
+});
+test("LOOP: reading a variable without a value is a warning", () => {
+  assert(warningsOf("loop", "INPUT n\nOUTPUT r\nr = r + 1\nr = r + 1") === "r@3", warningsOf("loop", "INPUT n\nOUTPUT r\nr = r + 1\nr = r + 1"));
+  assert(warningsOf("loop", "INPUT n\nLOOP (n) { r = 0 }\nr = r + 1") === "r@3", "assigned only in a loop");
+});
+test("WHILE: reading a variable without a value is a warning", () => {
+  const w = c => warningsOf("while", c);
+  assert(w("INPUT x\ny = z + 1\nWHILE (q != 0 AND x != 0) { x = x - 1 }") === "z@2 q@3", w("INPUT x\ny = z + 1\nWHILE (q != 0 AND x != 0) { x = x - 1 }"));
+  assert(w("INPUT x\nIF (x != 0) THEN { y = 1 } ELSE { y = 2 }\nz = y") === "", "both branches assign y");
+  assert(w("INPUT x\nIF (x != 0) THEN { y = 1 }\nz = y") === "y@3", "only one branch");
+  assert(w("FUN f(a) { b = c + 1\nRETURN r }\nx0 = f(1)") === "c@1 r@2", w("FUN f(a) { b = c + 1\nRETURN r }\nx0 = f(1)"));
+  assert(w("x0 = f(u)\nFUN f(a) { RETURN a }") === "u@1", "call arguments");
+});
+
+test("PROGRAM: optional name before everything else", () => {
+  assert(splitDirectives("// comment\nPROGRAM Add  // the name\nINPUT x\n").name === "Add", "name");
+  assert(splitDirectives("INPUT x\n").name === null, "no name");
+  for (const code of ["INPUT x\nPROGRAM Add", "PROGRAM Add\nPROGRAM Sub", "PROGRAM my program", "PROGRAM", "ENSURES x0 == 0\nPROGRAM A"])
+    try { splitDirectives(code); throw new Error("accepted: " + code); } catch (e) { assert(e instanceof LangError, e.message); }
+  assert(run("loop", "PROGRAM Inc\nINPUT x\nOUTPUT y\nLOOP (x) { y = y + 1 }\ny = y + 1", [2]) === 3n, "run with PROGRAM");
+  assert(run("primrec", "PROGRAM S\nf = succ", [4]) === 5n, "PRIMREC with PROGRAM");
+  assert(run("loop", "program = program + 2\nx0 = x0 + 1", []) === 1n, "a variable called program");
+});
 test("programs: menu label", () => {
   const now = new Date(2026, 10, 3, 17, 0);
   const label = programLabel({ code: "x = 1\n\ny = 2\n", edited: new Date(2026, 10, 3, 16, 42).getTime(), permalink: "1-2" }, now);
   assert(label === "16:42 · 2 lines · shared", label);
+  const named = programLabel({ code: "PROGRAM Fib\nx = 1\n", edited: new Date(2026, 10, 3, 16, 42).getTime() }, now);
+  assert(named === "Fib · 16:42", named);
 });
 
 console.log(failures ? `\n${failures} test(s) failed` : "\nall tests passed");

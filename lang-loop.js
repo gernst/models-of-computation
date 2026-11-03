@@ -12,7 +12,23 @@ function parseLoop(code) {
   const header = parseHeader(p, loopVar);
   const body = parseLoopBlock(p);
   if (!p.done()) p.error("'}' without matching '{'");
-  return { ...header, vars: [...p.vars], body };
+  const warnings = [];
+  checkLoopInit(body, startState(header), warnings);
+  return { ...header, vars: [...p.vars], body, warnings };
+}
+
+/** LOOP over a variable without a value is an error, reading one (x = x + c) a warning. */
+function checkLoopInit(stmts, st, warnings) {
+  for (const s of stmts) {
+    if (s.type === "assign") {
+      if (!s.reset && !st.has(s.x)) warnUninitialized(warnings, s.x, s.line);
+      st.add(s.x);
+    } else {
+      if (!st.has(s.x))
+        throw new LangError(`LOOP (${s.x}): '${s.x}' has no value yet; assign one first (e.g. ${s.x} = 0) or make it an INPUT`, s.line);
+      checkLoopInit(s.body, st.copy(), warnings);
+    }
+  }
 }
 
 /** A sequence of statements, optionally separated by semicolons. */
@@ -97,16 +113,20 @@ LANGUAGES.push({
   help: `LOOP programs compute on natural numbers 0, 1, 2, …
 
 Header (optional):
+  PROGRAM name          the name of the program
   INPUT a, b            the inputs, in this order   (default: x1, x2, …)
   OUTPUT c              the result                  (default: x0)
 
 Statements (keywords in any case; one per line, or separated by optional semicolons):
   x = c                 set x to the number c        (usually x = 0)
   x = x + c             increment x by c             (usually x = x + 1)
+  P; P                  execute the two programs in sequence   (the ; may be a line break)
   LOOP (x) { P }        repeat P exactly n times, n = value of x at the start
+                        (x must have a value: an input, or assigned before)
 
 There are no other assignments: x = y, x = y + 1 or subtraction must be programmed with loops.
-Variables can have any name; all non-input variables start at 0.
+Variables can have any name; all non-input variables start at 0, but reading one
+before assigning it gives a warning.
 Comments: // until the end of the line.`,
   parse: parseLoop,
   run: runLoop,
@@ -116,7 +136,8 @@ Comments: // until the end of the line.`,
   examples: [
     {
       name: "Addition", inputs: "3, 4", code:
-`INPUT x, y
+`PROGRAM Addition    // optional: the name of the program
+INPUT x, y
 OUTPUT z
 
 z = 0
@@ -129,7 +150,8 @@ LOOP (y) {
 ` },
     {
       name: "Predecessor", inputs: "5", code:
-`INPUT n
+`PROGRAM Predecessor
+INPUT n
 OUTPUT pred
 
 // next counts the rounds; in each round, pred is set to the old value of next
@@ -145,7 +167,8 @@ LOOP (n) {
 ` },
     {
       name: "Subtraction", inputs: "5, 2", code:
-`INPUT x, y
+`PROGRAM Subtraction
+INPUT x, y
 OUTPUT d
 
 // modified subtraction: x - y, but never below 0
