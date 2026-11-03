@@ -11,10 +11,12 @@ const ctx = vm.createContext({ console, localStorage });
 for (const f of scripts) vm.runInContext(fs.readFileSync(path.join(__dirname, f), "utf8"), ctx, { filename: f });
 const { LANGUAGES, LangError, checkProgram, splitDirectives,
         encodePermalinkProgram, decodePermalinkProgram, permalinkIdFrom, programFromPage,
-        loadPrograms, savePrograms, recordEdit, addProgram, deleteProgram, dropEmptyPrograms, programLabel, STORAGE_VERSION } =
+        loadPrograms, savePrograms, recordEdit, addProgram, deleteProgram, dropEmptyPrograms, programLabel, STORAGE_VERSION,
+        exportPrograms, planImport, applyImport } =
   vm.runInContext(`({ LANGUAGES, LangError, checkProgram, splitDirectives,
     encodePermalinkProgram, decodePermalinkProgram, permalinkIdFrom, programFromPage,
-    loadPrograms, savePrograms, recordEdit, addProgram, deleteProgram, dropEmptyPrograms, programLabel, STORAGE_VERSION })`, ctx);
+    loadPrograms, savePrograms, recordEdit, addProgram, deleteProgram, dropEmptyPrograms, programLabel, STORAGE_VERSION,
+    exportPrograms, planImport, applyImport })`, ctx);
 
 let failures = 0;
 function test(name, fn) {
@@ -209,6 +211,58 @@ test("spec: 1/0 results via IF", () =>
 test("spec: && is rejected with a hint", () => {
   try { evalSpec("1 < 2 && 1 < 2"); } catch (e) { assert(/AND/.test(e.message), e.message); return; }
   throw new Error("no error");
+});
+
+// Export and import of the user's programs.
+test("programs: no limit on the number of programs", () => {
+  storage.clear();
+  const lang = byId("loop"), list = [];
+  for (let i = 0; i < 100; i++) addProgram(list, `x = ${i}`, "");
+  savePrograms(lang, list);
+  assert(loadPrograms(lang).length === 100, "programs were dropped");
+});
+test("import: what is skipped, what clashes", () => {
+  storage.clear();
+  const lang = byId("while"), mine = [];
+  addProgram(mine, "PROGRAM A\nx = 1", "");
+  addProgram(mine, "PROGRAM B\nx = 1", "");
+  addProgram(mine, "x = 7", "");
+  mine.forEach((p, i) => { p.edited = 1000 + i; });
+  savePrograms(lang, mine);
+  const file = { format: "tcs-workbench-programs", version: 1, programs: { while: [
+    { code: "PROGRAM A\nx = 1", inputs: "", edited: 5 },      // same name, same code: skipped
+    { code: "PROGRAM B\nx = 2", inputs: "", edited: 1001 },   // same name, same date: skipped
+    { code: "PROGRAM B\nx = 3", inputs: "", edited: 9 },      // same name, different: clash
+    { code: "x = 7", inputs: "", edited: 2 },                  // no name: always offered
+    { code: "PROGRAM C\nx = 4", inputs: "", edited: 3 },      // new
+  ], cobol: [{ code: "x", inputs: "" }] } };
+  const plan = planImport(file, LANGUAGES);
+  assert(plan.same === 2 && plan.unknown === 1 && plan.items.length === 3, JSON.stringify({ same: plan.same, unknown: plan.unknown, n: plan.items.length }));
+  assert(plan.items[0].existing.length === 1 && plan.items[1].existing.length === 0 && plan.items[2].existing.length === 0, "clashes");
+  let threw = false;
+  try { planImport({ hello: 1 }, LANGUAGES); } catch { threw = true; }
+  assert(threw, "a foreign file must be rejected");
+});
+test("import: skip, add next to, replace", () => {
+  storage.clear();
+  const lang = byId("loop"), mine = [];
+  addProgram(mine, "PROGRAM A\nx = 1", "");
+  addProgram(mine, "PROGRAM B\nx = 1", "");
+  savePrograms(lang, mine);
+  const file = { format: "tcs-workbench-programs", version: 1, programs: { loop: [
+    { code: "PROGRAM A\nx = 2", inputs: "", edited: 1 }, { code: "PROGRAM B\nx = 2", inputs: "", edited: 1 },
+    { code: "PROGRAM C\nx = 2", inputs: "", edited: 1 } ] } };
+  const r = applyImport(planImport(file, LANGUAGES), ["replace", "add", "skip"]);
+  const names = loadPrograms(lang).map(p => p.code.replace("\n", " ")).sort().join(" | ");
+  assert(r.added === 1 && r.replaced === 1 && r.skipped === 1 && r.ok, JSON.stringify(r));
+  assert(names === "PROGRAM A x = 2 | PROGRAM B x = 1 | PROGRAM B x = 2", names);
+});
+test("export: all languages, round trip", () => {
+  storage.clear();
+  savePrograms(byId("primrec"), [{ id: "a", code: "PROGRAM P\nf = succ", inputs: "1", edited: 7, permalink: "1-2" }]);
+  const data = JSON.parse(JSON.stringify(exportPrograms(LANGUAGES)));
+  assert(Object.keys(data.programs).join() === "primrec" && data.programs.primrec[0].permalink === "1-2", JSON.stringify(data));
+  assert(planImport(data, LANGUAGES).same === 1, "re-importing the export finds everything already there");
 });
 
 // Permalinks: answers as returned by the permalink service (shortened).

@@ -166,3 +166,13 @@ main.text p { margin: 0 0 10px; }
 
 /* buttons in the output, e.g. "Undo" */
 #output button { font: inherit; font-size: 0.9em; padding: 1px 8px; margin-left: 4px; }
+
+/* import dialog */
+dialog { max-width: 640px; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 8px; }
+dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+dialog h3 { margin-top: 0; }
+#importList { max-height: 50vh; overflow-y: auto; margin: 8px 0; }
+.import-item { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.import-item > div { margin: 2px 0 0 24px; font-size: 0.9em; }
+.import-item label { color: var(--text); }
+.muted { color: var(--muted); }

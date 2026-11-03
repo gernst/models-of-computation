@@ -11,7 +11,7 @@
   <header>
     <h1>Computability Workbench</h1>
     <p>LOOP · WHILE · PRIMREC</p>
-    <span class="version" title="Version of this tool">version 0.2</span>
+    <span class="version" title="Version of this tool">version 0.3</span>
   </header>
   <p class="intro">
     Write and run programs in the small models of computation from the lecture
@@ -74,6 +74,38 @@ Numbers and conditions are kept apart: IF, AND, OR, NOT, ==&gt; and &lt;==&gt; n
 conditions such as comparisons, and a whole REQUIRES/ENSURES line must be a condition.
 "Check" runs the program on all inputs up to the given maximum. This is testing, not a proof.</pre>
   </details>
+  <details>
+    <summary>Your programs</summary>
+    <p>
+      Every program you write or change is stored in this browser and listed under
+      "Your programs" in the Example menu. It is not stored anywhere else.
+      <span id="storageInfo"></span>
+      To keep a copy, or to move your programs to another browser or computer, export them to a file.
+      When importing, you choose which programs to take over; programs you already have are
+      only replaced if you say so.
+    </p>
+    <div class="row">
+      <button id="export">Export all programs</button>
+      <button id="import">Import programs …</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+    </div>
+  </details>
+
+  <dialog id="importDialog">
+    <h3>Import programs</h3>
+    <p>Choose the programs to import. Programs you already have are only replaced if you say so.</p>
+    <div class="row">
+      <button id="importAll">All</button>
+      <button id="importNone">None</button>
+    </div>
+    <div id="importList"></div>
+    <p id="importNotes" class="muted"></p>
+    <div class="row">
+      <button id="importOk" class="primary">Import</button>
+      <button id="importCancel">Cancel</button>
+    </div>
+  </dialog>
+
   <footer><a href="impressum.html">Impressum &amp; Datenschutz</a></footer>
 </main>
 
