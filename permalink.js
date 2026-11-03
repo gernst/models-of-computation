@@ -1,7 +1,7 @@
 "use strict";
 // Permalinks, stored by a permalink service with this interface:
-//   POST save-perma.php   form field prog1 = program text   → HTML with a link  …/?ex=<id>
-//   GET  ?ex=<id>                                            → HTML page with the program in <textarea id="prog1">
+//   POST save-perma.php              form field prog1 = program text   → HTML with a link  …?ex=<id>
+//   GET  experiments/perma/<id>.prog                                    → the stored program text
 // The stored text starts with a line  LANGUAGE <name>,  which is removed again when loading.
 // Our own links look like  index.html#ex=<id>.
 //
@@ -41,22 +41,6 @@ function permalinkIdFrom(html) {
   return m[1];
 }
 
-const HTML_ENTITIES = { lt: "<", gt: ">", amp: "&", quot: '"', apos: "'", nbsp: " " };
-
-function decodeHtml(s) {
-  return s.replace(/&(#x[0-9a-f]+|#[0-9]+|[a-z]+);/gi, (m, e) => {
-    if (e[0] === "#") return String.fromCodePoint(e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : Number(e.slice(1)));
-    return HTML_ENTITIES[e.toLowerCase()] ?? m;
-  });
-}
-
-/** The program in the page returned for  ?ex=<id>. */
-function programFromPage(html) {
-  const m = /<textarea[^>]*\bid="prog1"[^>]*>([\s\S]*?)<\/textarea>/i.exec(html);
-  if (!m) throw new Error("the server's answer contains no program");
-  return decodeHtml(m[1]).replace(/^\r?\n/, ""); // HTML ignores a newline right after <textarea>
-}
-
 async function fetchText(url, options) {
   let r;
   try {
@@ -64,6 +48,7 @@ async function fetchText(url, options) {
   } catch {
     throw new Error("the permalink server cannot be reached (or does not allow requests from this page)");
   }
+  if (r.status === 404) throw new Error("there is no shared program with this link");
   if (!r.ok) throw new Error(`the permalink server answered ${r.status}`);
   return r.text();
 }
@@ -76,5 +61,5 @@ async function savePermalink(langName, code) {
 
 /** Load a stored program; returns { language, code }. */
 async function loadPermalink(id) {
-  return decodePermalinkProgram(programFromPage(await fetchText(PERMALINK_SERVER + "?ex=" + encodeURIComponent(id))));
+  return decodePermalinkProgram(await fetchText(PERMALINK_SERVER + "experiments/perma/" + encodeURIComponent(id) + ".prog"));
 }

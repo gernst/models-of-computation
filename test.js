@@ -11,11 +11,11 @@ const localStorage = { getItem: k => storage.get(k) ?? null, setItem: (k, v) => 
 const ctx = vm.createContext({ console, localStorage });
 for (const f of scripts) vm.runInContext(fs.readFileSync(path.join(__dirname, f), "utf8"), ctx, { filename: f });
 const { LANGUAGES, LangError, checkProgram, splitDirectives,
-        encodePermalinkProgram, decodePermalinkProgram, permalinkIdFrom, programFromPage,
+        encodePermalinkProgram, decodePermalinkProgram, permalinkIdFrom,
         loadPrograms, savePrograms, recordEdit, addProgram, deleteProgram, dropEmptyPrograms, programLabel, STORAGE_VERSION,
         exportPrograms, planImport, applyImport } =
   vm.runInContext(`({ LANGUAGES, LangError, checkProgram, splitDirectives,
-    encodePermalinkProgram, decodePermalinkProgram, permalinkIdFrom, programFromPage,
+    encodePermalinkProgram, decodePermalinkProgram, permalinkIdFrom,
     loadPrograms, savePrograms, recordEdit, addProgram, deleteProgram, dropEmptyPrograms, programLabel, STORAGE_VERSION,
     exportPrograms, planImport, applyImport })`, ctx);
 
@@ -270,11 +270,6 @@ test("permalink: LANGUAGE line round trip", () => {
 test("permalink: id from save-perma.php", () => {
   const html = `<p>\nPermalink:\n<a href="https://example.org/service/?ex=1700000000-1234567890">https://example.org/service/?ex=1700000000-1234567890</a></p>`;
   assert(permalinkIdFrom(html) === "1700000000-1234567890", "wrong id");
-});
-test("permalink: program from the loaded page", () => {
-  const html = `<form><textarea name="prog1" id="prog1" spellcheck="false" style="width: 80%">\nLANGUAGE LOOP\nx = x + 1 // a &lt; b &amp;&amp; c\n</textarea>`;
-  const d = decodePermalinkProgram(programFromPage(html));
-  assert(d.language === "LOOP" && d.code === "x = x + 1 // a < b && c\n", JSON.stringify(d));
 });
 
 // The user's programs (programs.js).
