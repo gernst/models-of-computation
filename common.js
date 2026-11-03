@@ -174,8 +174,6 @@ class InitState {
   has(x) { return this.defined.has(x) || (this.defaultInputs && /^x[1-9][0-9]*$/.test(x)); }
   add(x) { this.defined.add(x); }
   copy() { return new InitState(this.defined, this.defaultInputs); }
-  /** After IF … ELSE: only what is assigned in both branches. */
-  meet(other) { this.defined = new Set([...this.defined].filter(x => other.defined.has(x))); }
 }
 
 /** The state at the start of a program with header { inputs }. */

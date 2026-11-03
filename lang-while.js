@@ -1,7 +1,7 @@
 "use strict";
 // WHILE programs over the integers.
 
-const WHILE_KEYWORDS = ["WHILE", "IF", "THEN", "ELSE", "AND", "OR", "NOT", "INPUT", "OUTPUT", "FUN", "RETURN"];
+const WHILE_KEYWORDS = ["WHILE", "INPUT", "OUTPUT", "FUN", "RETURN"];
 const MAX_DEPTH = 1000; // maximal nesting of function calls
 
 // ---------------------------------------------------------------- parser
@@ -34,11 +34,7 @@ function parseWhile(code) {
 /** Warn about reading variables before they have a value (see InitState in common.js). */
 function checkWhileInit(stmts, st, warnings) {
   const read = (x, line) => { if (!st.has(x)) warnUninitialized(warnings, x, line); };
-  const readCondition = (c, line) => {
-    if (c.var !== undefined) return read(c.var, line);
-    readCondition(c.left, line);
-    if (c.right) readCondition(c.right, line);
-  };
+  const readCondition = (c, line) => read(c.var, line);
   for (const s of stmts) {
     if (s.type === "assign") {
       if (s.y !== null) read(s.y, s.line);
@@ -46,13 +42,6 @@ function checkWhileInit(stmts, st, warnings) {
     } else if (s.type === "call") {
       for (const a of s.args) if (a.var !== undefined) read(a.var, s.line);
       st.add(s.x);
-    } else if (s.type === "if") {
-      readCondition(s.x, s.line);
-      const a = st.copy(), b = st.copy();
-      checkWhileInit(s.then, a, warnings);
-      checkWhileInit(s.otherwise, b, warnings);
-      a.meet(b);
-      st.defined = a.defined;
     } else { // while
       readCondition(s.x, s.line);
       checkWhileInit(s.body, st.copy(), warnings);
@@ -70,66 +59,25 @@ function parseWhileBlock(p, top = false) {
   return stmts;
 }
 
-/**
- * Condition ::= ( Or )      Or ::= And (OR And)*      And ::= Test (AND Test)*
- * Test ::= var != 0 | NOT Test | ( Or )
- * Returns { var }, { op: "NOT", left } or { op: "AND" | "OR", left, right }.
- */
+/** Condition ::= ( var != 0 )   Returns { var }. */
 function parseCondition(p) {
   p.expect("(");
-  const c = parseOr(p);
-  if (p.at("&&") || p.at("||")) p.error("write AND and OR instead of && and ||");
-  p.expect(")");
-  return c;
-}
-
-function parseOr(p) {
-  let c = parseAnd(p);
-  while (p.atKeyword("OR")) { p.next(); c = { op: "OR", left: c, right: parseAnd(p) }; }
-  return c;
-}
-
-function parseAnd(p) {
-  let c = parseTest(p);
-  while (p.atKeyword("AND")) { p.next(); c = { op: "AND", left: c, right: parseTest(p) }; }
-  return c;
-}
-
-function parseTest(p) {
-  if (p.at("(")) return parseCondition(p);
-  if (p.atKeyword("NOT")) { p.next(); return { op: "NOT", left: parseTest(p) }; }
-  if (p.at("&&") || p.at("||") || p.at("!")) p.error("write AND, OR and NOT instead of &&, || and !");
   const line = p.line();
+  if (p.at("(") || p.atKeyword("NOT") || p.at("!")) p.error("a condition is a single test  (x != 0);  AND, OR and NOT are not part of WHILE");
   const x = whileVar(p);
   const op = p.next();
   if (!["!=", "≠", "<>"].includes(op.value))
     throw new LangError(`expected '!=' after '${x}' but found '${op.value}'`, op.line);
   if (p.number() !== 0n) throw new LangError("only tests of the form 'x != 0' are allowed", line);
+  if (!p.at(")")) p.error("a condition is a single test  (x != 0);  AND, OR and NOT are not part of WHILE");
+  p.expect(")");
   return { var: x };
 }
 
-function evalCondition(c, env) {
-  if (c.var !== undefined) return env.get(c.var) !== 0n;
-  if (c.op === "NOT") return !evalCondition(c.left, env);
-  return c.op === "AND" ? evalCondition(c.left, env) && evalCondition(c.right, env)
-                       : evalCondition(c.left, env) || evalCondition(c.right, env);
-}
+const evalCondition = (c, env) => env.get(c.var) !== 0n;
 
-/** For the trace: the condition as text, and the values of its variables. */
-function showCondition(c, env, top = true) {
-  const text = c.var !== undefined ? `${c.var} != 0`
-    : c.op === "NOT" ? `NOT ${showCondition(c.left, env, false)}`
-    : `${showCondition(c.left, env, false)} ${c.op} ${showCondition(c.right, env, false)}`;
-  if (!top) return c.op === "AND" || c.op === "OR" ? `(${text})` : text;
-  const vars = [];
-  const walk = d => {
-    if (!d) return;
-    if (d.var !== undefined) { if (!vars.includes(d.var)) vars.push(d.var); }
-    else { walk(d.left); walk(d.right); }
-  };
-  walk(c);
-  return `(${text}): ` + vars.map(x => `${x} = ${env.get(x)}`).join(", ");
-}
+/** For the trace: the condition and the value of its variable. */
+const showCondition = (c, env) => `(${c.var} != 0): ${c.var} = ${env.get(c.var)}`;
 
 /** { Stmt* } */
 function parseBraces(p) {
@@ -189,24 +137,17 @@ function parseWhileStmt(p) {
     return { type: "while", x, body: parseBraces(p), line };
   }
 
-  if (p.atKeyword("IF")) {
-    p.next();
-    const x = parseCondition(p);
-    if (p.atKeyword("THEN")) p.next(); // optional
-    const then = parseBraces(p);
-    let otherwise = [];
-    if (p.atKeyword("ELSE")) { p.next(); otherwise = parseBraces(p); }
-    return { type: "if", x, then, otherwise, line };
-  }
-  if (p.atKeyword("ELSE") || p.atKeyword("THEN")) p.error(`${p.peek().value} without IF`);
+  if (p.atKeyword("IF") || p.atKeyword("THEN") || p.atKeyword("ELSE"))
+    p.error("IF is not part of WHILE programs; use WHILE, e.g. a loop that runs at most once");
 
   if (p.atKeyword("LOOP")) p.error("LOOP is not part of WHILE programs here; use WHILE");
   if (p.atKeyword("INPUT") || p.atKeyword("OUTPUT")) p.error("INPUT and OUTPUT must come before the first statement");
   if (p.atKeyword("FUN")) p.error("functions can only be defined at the top level, not inside a block or function");
   if (p.atKeyword("RETURN")) p.error("RETURN is only allowed as the last statement of a function");
 
-  // assignment:  x = y + c  |  x = y - c  |  x = y  |  x = c  |  x = f(a, …)
+  // reset, increment, decrement, call:  x = c  |  x = x + c  |  x = x - c  |  x = f(a, …)
   const x = whileVar(p);
+  const only = `WHILE only has  ${x} = c,  ${x} = ${x} + c  and  ${x} = ${x} - c  (c a number), and calls  ${x} = f(…)`;
   if (p.at("=") || p.at(":=")) p.next(); // := is accepted, too
   else p.error(`expected '=' after '${x}'`);
   if (p.peek()?.type === "id" && p.tokens[p.pos + 1]?.value === "(") {
@@ -223,12 +164,13 @@ function parseWhileStmt(p) {
     return { type: "call", x, f, args, line };
   }
   if (p.peek()?.type === "num") return { type: "assign", x, y: null, op: "+", c: p.number(), line };
+  const t = p.peek();
+  if (t?.type !== "id" || t.value !== x) p.error(only);
   const y = whileVar(p);
-  if (p.at("+") || p.at("-")) {
-    const op = p.next().value;
-    return { type: "assign", x, y, op, c: p.number(), line };
-  }
-  return { type: "assign", x, y, op: "+", c: 0n, line };
+  if (!(p.at("+") || p.at("-"))) p.error(only);
+  const op = p.next().value;
+  if (p.peek()?.type !== "num") p.error(only);
+  return { type: "assign", x, y, op, c: p.number(), line };
 }
 
 // ---------------------------------------------------------------- interpreter
@@ -263,11 +205,6 @@ function execWhile(stmts, env, ctx, frame) {
       record(ctx, f.returnLine, () => `[${f.name}]  ${call} returns ${v}`);
       env.set(s.x, v);
       record(ctx, s.line, () => where + showVars(env));
-    } else if (s.type === "if") {
-      tick(ctx);
-      const b = evalCondition(s.x, env);
-      record(ctx, s.line, () => `${where}IF ${showCondition(s.x, env)} → ${b ? "then" : s.otherwise.length ? "else" : "skip"}`);
-      execWhile(b ? s.then : s.otherwise, env, ctx, frame);
     } else { // while
       for (;;) {
         tick(ctx);
@@ -294,23 +231,15 @@ Header (optional):
   OUTPUT c              the result                  (default: x0)
 
 Statements (keywords in any case; one per line, or separated by optional semicolons):
-  x = y + c             x = y - c      (ordinary subtraction: may become negative)
-  x = y                 x = c
+  x = c                 set x to the number c        (usually x = 0)
+  x = x + c             increment x by c             (usually x = x + 1)
+  x = x - c             decrement x by c             (may become negative)
+  P; P                  execute the two programs in sequence   (the ; may be a line break)
   WHILE (x != 0) { P }  repeat P as long as x is not 0
-  IF (x != 0) THEN { P } ELSE { Q }
-                        if x is not 0 do P, else Q   (THEN and ELSE { Q } are optional)
-  x = f(a, b)           call function f; arguments are variables or numbers
+                        (the condition is always a single test  x != 0)
 
-Conditions are tests  x != 0, combined with AND, OR, NOT and parentheses:
-  WHILE (x != 0 AND (y != 0 OR NOT z != 0)) { P }
-
-Functions (at the top level, before or after the main program; may be recursive):
-  FUN f(a, b) {
-    P
-    RETURN r            must be the last line
-  }
-Parameters are passed by value; all other variables of a function are local and start at 0.
-
+There are no other statements: x = y, x = y + 1, IF, or conditions with AND, OR, NOT
+must be programmed with WHILE loops.
 Variables can have any name; all non-input variables start at 0, but reading one
 before assigning it gives a warning.
 Comments: // until the end of the line.`,
@@ -342,86 +271,68 @@ WHILE (y != 0) {
 `PROGRAM Subtraction
 INPUT x, y
 OUTPUT diff
-REQUIRES y >= 0
+REQUIRES x >= 0 AND y >= 0
 
-diff = x
-WHILE (y != 0) {
+diff = 0
+WHILE (x != 0) {        // diff = x
+  diff = diff + 1
+  x = x - 1
+}
+WHILE (y != 0) {        // diff = diff - y, may become negative
   diff = diff - 1
   y = y - 1
 }
 ` },
     {
-      name: "Absolute value", inputs: "-3", code:
-`PROGRAM AbsoluteValue
-INPUT x
-OUTPUT abs
-
-// The only test is "!= 0", so count up and down at the same time:
-// up reaches 0 if x < 0, down reaches 0 if x > 0.
-abs = 0
-up = x
-down = x
-WHILE (up != 0 AND down != 0) {
-  abs = abs + 1
-  up = up + 1
-  down = down - 1
-}
-` },
-    {
-      name: "Multiplication (function)", inputs: "3, 4", code:
+      name: "Multiplication", inputs: "3, 4", code:
 `PROGRAM Multiplication
 INPUT x, y
 OUTPUT p
 REQUIRES x >= 0 AND y >= 0
 
-FUN add(a, b) {
-  WHILE (b != 0) {
-    a = a + 1
-    b = b - 1
-  }
-  RETURN a
-}
-
 p = 0
 WHILE (y != 0) {
-  p = add(p, x)
+  t = 0
+  WHILE (x != 0) {      // p = p + x, and x is moved to t
+    p = p + 1
+    t = t + 1
+    x = x - 1
+  }
+  WHILE (t != 0) {      // move t back to x
+    x = x + 1
+    t = t - 1
+  }
   y = y - 1
 }
 ` },
     {
-      name: "Fibonacci (recursive)", inputs: "10", code:
+      name: "Fibonacci", inputs: "10", code:
 `PROGRAM Fibonacci
 INPUT n
 OUTPUT f
 REQUIRES n >= 0
 
-FUN add(a, b) {
-  WHILE (b != 0) {
-    a = a + 1
-    b = b - 1
+// fib(0) = 0, fib(1) = 1, fib(i+2) = fib(i) + fib(i+1)
+f = 0                   // fib(i)
+g = 1                   // fib(i+1)
+WHILE (n != 0) {
+  // (f, g) = (g, f + g), with h as temporary
+  h = 0
+  WHILE (f != 0) {      // h = f, f = 0
+    h = h + 1
+    f = f - 1
   }
-  RETURN a
-}
-
-// fib(0) = 0, fib(1) = 1, fib(n) = fib(n-1) + fib(n-2)
-FUN fib(n) {
-  IF (n != 0) THEN {
-    m = n - 1
-    IF (m != 0) THEN {    // n >= 2
-      a = fib(m)
-      k = m - 1
-      b = fib(k)
-      r = add(a, b)
-    } ELSE {              // n = 1
-      r = 1
-    }
-  } ELSE {                // n = 0
-    r = 0
+  WHILE (g != 0) {      // f = g, h = h + g, g = 0
+    f = f + 1
+    h = h + 1
+    g = g - 1
   }
-  RETURN r
+  WHILE (h != 0) {      // g = h
+    g = g + 1
+    h = h - 1
+  }
+  n = n - 1
 }
-
-f = fib(n)
 ` },
     {
       name: "Infinite loop", inputs: "1", code:

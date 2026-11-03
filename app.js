@@ -16,7 +16,10 @@ function option(parent, value, text) {
   parent.append(o);
 }
 
-/** Switch the language and show its most recently edited program (or its first example). */
+/**
+ * Switch the language and show what was open last in it; if that is unknown or gone,
+ * the most recently edited program, or else the first example.
+ */
 function selectLanguage(id) {
   lang = LANGUAGES.find(l => l.id === id) ?? LANGUAGES[0];
   $("language").value = lang.id;
@@ -24,8 +27,17 @@ function selectLanguage(id) {
   $("help").textContent = lang.name + "\n\n" + lang.help;
   updateMinValue();
   programs = loadPrograms(lang);
-  showMostRecent();
+  const last = load("open:" + lang.id) ?? ""; // "e<index>" or "p<id>", see rememberOpen
+  const p = programs.find(p => "p" + p.id === last);
+  if (p) showProgram(p);
+  else if (/^e\d+$/.test(last) && lang.examples[Number(last.slice(1))]) showExample(Number(last.slice(1)));
+  else showMostRecent();
   show("", "");
+}
+
+/** Remember what is open, so that a reload shows it again. */
+function rememberOpen(value) {
+  save("open:" + lang.id, value);
 }
 
 function showMostRecent() {
@@ -44,6 +56,7 @@ function setEditor(code, inputs) {
 function showExample(i) {
   const ex = lang.examples[i];
   current = null;
+  rememberOpen("e" + i);
   setEditor(ex.code, ex.inputs);
   updateMenu();
   setPermalink(null);
@@ -51,6 +64,7 @@ function showExample(i) {
 
 function showProgram(p) {
   current = p.id;
+  rememberOpen("p" + p.id);
   setEditor(p.code, p.inputs);
   updateMenu();
   setPermalink(p.permalink);
@@ -93,6 +107,7 @@ function store() {
 function edited() {
   const before = current;
   current = recordEdit(lang, programs, current, editor.value, $("inputs").value);
+  if (current && current !== before) rememberOpen("p" + current);
   store();
   updateMenu();
   if (current !== before) setPermalink(null); // a new program has no link (yet)
@@ -174,25 +189,25 @@ const escapeHtml = s => s.replace(/[&<>]/g, c => HTML_ESCAPES[c]);
 /**
  * Colour comments, numbers, the language's keywords and the header words. Returns HTML.
  * In REQUIRES/ENSURES lines, the keywords of the condition language (AND, IF, …) are coloured instead,
- * the same in every language.
+ * the same in every language. Keywords are only coloured in their proper case (LOOP, not loop),
+ * even where the parser accepts any case.
  */
 function highlightCode(src, keywords) {
   return src.split("\n").map(line => /^\s*(REQUIRES|ENSURES)\b/i.test(line)
-    ? highlightLine(line, SPEC_KEYWORDS, true)
-    : highlightLine(line, keywords, lang.keywordsAnyCase)).join("\n");
+    ? highlightLine(line, SPEC_KEYWORDS)
+    : highlightLine(line, keywords)).join("\n");
 }
 
-function highlightLine(line, keywords, anyCase) {
+function highlightLine(line, keywords) {
   const span = (cls, text) => `<span class="${cls}">${escapeHtml(text)}</span>`;
   const lineStart = /^\s*/.exec(line)[0].length;
   return line.replace(/(\/\/.*)|([A-Za-z_][A-Za-z0-9_]*)|([0-9]+)|([&<>])/g, (m, comment, word, num, esc, offset) => {
     if (comment) return span("hl-comment", comment);
     if (num) return span("hl-number", num);
     if (esc) return HTML_ESCAPES[esc];
-    const upper = word.toUpperCase();
-    if (offset === lineStart && HEADER_WORDS.includes(upper) && !/^\s*:?=/.test(line.slice(offset + word.length)))
+    if (offset === lineStart && HEADER_WORDS.includes(word) && !/^\s*:?=/.test(line.slice(offset + word.length)))
       return span("hl-spec", word);
-    if (keywords.includes(word) || (anyCase && keywords.includes(upper))) return span("hl-keyword", word);
+    if (keywords.includes(word)) return span("hl-keyword", word);
     return word;
   });
 }
@@ -314,7 +329,7 @@ async function share() {
     const id = await savePermalink(l.name, code);
     if (lang === l && editor.value === code) { // still the same program in the editor
       if (p && p.code === code) p.permalink = id;
-      else current = addProgram(programs, code, inputs, id);
+      else { current = addProgram(programs, code, inputs, id); rememberOpen("p" + current); }
       store();
       updateMenu();
       setPermalink(id);
