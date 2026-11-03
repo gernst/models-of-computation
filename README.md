@@ -87,6 +87,7 @@ You can also push to GitHub or GitLab and enable Pages for the repository root.
 
 - **LOOP** computes on natural numbers, and the number of `LOOP (x)` iterations is fixed when the loop starts.
 - **WHILE** computes on integers. Like LOOP it has no general assignment: only `x = c`, `x = x + c` and `x = x - c` (ordinary subtraction, may become negative); inputs may be negative, and `Check` tests inputs from -N to N. WHILE programs contain no LOOP and no IF; conditions are single tests `(x != 0)`. (Functions with `FUN … RETURN` are still implemented in `lang-while.js` but no longer documented or used in the examples.)
+- **WHILE + LOOP** is WHILE with `LOOP (x) { … }` in addition (defined in `lang-while.js`, same parser with a flag): the number of iterations is the value of x at the start, none if it is 0 or negative; LOOP over a variable without a value is an error, as in LOOP.
 - **LOOP** has no general assignment: the only statements are `x = c` (reset), `x = x + c` (increment) and `LOOP (x) { … }`. Copying and subtraction are programmed with loops.
 - **Static checks (LOOP/WHILE):** a variable has a value if it is an input or certainly assigned before (assignments in loop bodies do not count after the loop). `LOOP (x)` over a variable without a value is an error; reading one is a warning, shown above the result.
 - **All languages:** an optional first line `PROGRAM <name>` names the program (only comments may come before it); the name is shown in the Example menu under "Your programs".

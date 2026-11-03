@@ -1,14 +1,17 @@
 "use strict";
-// WHILE programs over the integers.
+// WHILE programs over the integers, and WHILE + LOOP: the same with LOOP (x) { P } in addition.
 
 const WHILE_KEYWORDS = ["WHILE", "INPUT", "OUTPUT", "FUN", "RETURN"];
+const WHILE_LOOP_KEYWORDS = [...WHILE_KEYWORDS, "LOOP"];
 const MAX_DEPTH = 1000; // maximal nesting of function calls
 
 // ---------------------------------------------------------------- parser
 
-/** Program ::= [INPUT var, …, var] [OUTPUT var] (Stmt | Fun)* */
-function parseWhile(code) {
+/** Program ::= [INPUT var, …, var] [OUTPUT var] (Stmt | Fun)*   (withLoop: LOOP is a statement, too) */
+function parseWhile(code, withLoop = false) {
   const p = new Parser(code);
+  p.withLoop = withLoop;
+  p.keywords = withLoop ? WHILE_LOOP_KEYWORDS : WHILE_KEYWORDS;
   p.vars = new Set();  // variables of the part being parsed (main program or one function)
   p.funs = new Map();  // name -> function
   p.calls = [];        // all calls, checked at the end (functions may be used before their definition)
@@ -42,6 +45,10 @@ function checkWhileInit(stmts, st, warnings) {
     } else if (s.type === "call") {
       for (const a of s.args) if (a.var !== undefined) read(a.var, s.line);
       st.add(s.x);
+    } else if (s.type === "loop") { // as in LOOP programs: an error, not only a warning
+      if (!st.has(s.x))
+        throw new LangError(`LOOP (${s.x}): '${s.x}' has no value yet; assign one first (e.g. ${s.x} = 0) or make it an INPUT`, s.line);
+      checkWhileInit(s.body, st.copy(), warnings);
     } else { // while
       readCondition(s.x, s.line);
       checkWhileInit(s.body, st.copy(), warnings);
@@ -122,7 +129,7 @@ function parseFun(p) {
 
 function whileVar(p) {
   const t = p.next();
-  if (t.type !== "id" || WHILE_KEYWORDS.includes(t.value.toUpperCase()))
+  if (t.type !== "id" || p.keywords.includes(t.value.toUpperCase()))
     throw new LangError(`expected a variable but found '${t.value}'`, t.line);
   p.vars.add(t.value);
   return t.value;
@@ -140,7 +147,14 @@ function parseWhileStmt(p) {
   if (p.atKeyword("IF") || p.atKeyword("THEN") || p.atKeyword("ELSE"))
     p.error("IF is not part of WHILE programs; use WHILE, e.g. a loop that runs at most once");
 
-  if (p.atKeyword("LOOP")) p.error("LOOP is not part of WHILE programs here; use WHILE");
+  if (p.atKeyword("LOOP")) {
+    if (!p.withLoop) p.error("LOOP is not part of WHILE programs; use WHILE, or the language WHILE + LOOP");
+    p.next();
+    p.expect("(");
+    const x = whileVar(p);
+    p.expect(")");
+    return { type: "loop", x, body: parseBraces(p), line };
+  }
   if (p.atKeyword("INPUT") || p.atKeyword("OUTPUT")) p.error("INPUT and OUTPUT must come before the first statement");
   if (p.atKeyword("FUN")) p.error("functions can only be defined at the top level, not inside a block or function");
   if (p.atKeyword("RETURN")) p.error("RETURN is only allowed as the last statement of a function");
@@ -205,6 +219,13 @@ function execWhile(stmts, env, ctx, frame) {
       record(ctx, f.returnLine, () => `[${f.name}]  ${call} returns ${v}`);
       env.set(s.x, v);
       record(ctx, s.line, () => where + showVars(env));
+    } else if (s.type === "loop") {
+      const n = env.get(s.x); // read once, at the start; n <= 0: no iterations
+      record(ctx, s.line, () => `${where}LOOP (${s.x}): ${n > 0n ? n : 0n} iteration(s)`);
+      for (let i = 0n; i < n; i++) {
+        tick(ctx);
+        execWhile(s.body, env, ctx, frame);
+      }
     } else { // while
       for (;;) {
         tick(ctx);
@@ -217,13 +238,9 @@ function execWhile(stmts, env, ctx, frame) {
   }
 }
 
-// ---------------------------------------------------------------- language
+// ---------------------------------------------------------------- languages
 
-LANGUAGES.push({
-  id: "while",
-  name: "WHILE",
-  integers: true,
-  help: `WHILE programs compute on integers …, -2, -1, 0, 1, 2, …
+const WHILE_HELP = `WHILE programs compute on integers …, -2, -1, 0, 1, 2, …
 
 Header (optional):
   PROGRAM name          the name of the program
@@ -242,7 +259,20 @@ There are no other statements: x = y, x = y + 1, IF, or conditions with AND, OR,
 must be programmed with WHILE loops.
 Variables can have any name; all non-input variables start at 0, but reading one
 before assigning it gives a warning.
-Comments: // until the end of the line.`,
+Comments: // until the end of the line`;
+
+const WHILE_LOOP_HELP = WHILE_HELP
+  .replace("WHILE programs compute on integers", "WHILE + LOOP programs: WHILE programs with LOOP in addition, on integers")
+  .replace("  WHILE (x != 0) { P }", `  LOOP (x) { P }        repeat P exactly n times, n = value of x at the start
+                        (n <= 0: not at all; x must have a value: an input, or assigned before)
+  WHILE (x != 0) { P }`);
+
+LANGUAGES.push({
+  id: "while",
+  name: "WHILE",
+  integers: true,
+  help: WHILE_HELP,
+
   parse: parseWhile,
   run: runWhile,
   keywords: WHILE_KEYWORDS,
@@ -343,6 +373,36 @@ OUTPUT n
 
 WHILE (n != 0) {
   n = n + 1
+}
+` },
+  ],
+});
+
+LANGUAGES.push({
+  id: "whileloop",
+  name: "WHILE + LOOP",
+  integers: true,
+  help: WHILE_LOOP_HELP,
+  parse: code => parseWhile(code, true),
+  run: runWhile,
+  keywords: WHILE_LOOP_KEYWORDS,
+  keywordsAnyCase: true,
+  signature: program => ({ inputs: program.inputs, output: program.output }),
+  examples: [
+    {
+      name: "Sum 1 + … + n", inputs: "4", code:
+`PROGRAM Sum
+INPUT n
+OUTPUT s
+REQUIRES n >= 0
+
+// s = n + (n - 1) + … + 1: WHILE counts n down, LOOP adds n to s
+s = 0
+WHILE (n != 0) {
+  LOOP (n) {
+    s = s + 1
+  }
+  n = n - 1
 }
 ` },
   ],

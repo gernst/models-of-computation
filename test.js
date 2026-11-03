@@ -44,6 +44,7 @@ const SPECS = {
   "while/Subtraction": "diff == x - y",
   "while/Multiplication": "p == x * y",
   "while/Fibonacci": "", // not expressible in ENSURES; see the test below
+  "whileloop/Sum 1 + … + n": "2 * s == n * (n + 1)",
   "primrec/Addition": "x0 == x1 + x2",
   "primrec/Predecessor": "x0 == IF x1 == 0 THEN 0 ELSE x1 - 1",
 };
@@ -110,6 +111,17 @@ test("WHILE: Fibonacci", () => {
   const fib = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
   fib.forEach((v, n) => assert(run("while", ex.code, [n]) === BigInt(v), `fib(${n})`));
 });
+test("WHILE + LOOP: LOOP reads the count once; negative counts mean no iterations", () => {
+  assert(run("whileloop", "LOOP (x1) { x1 = x1 + 1  x0 = x0 + 1 }", [3]) === 3n, "count read once");
+  assert(run("whileloop", "x0 = 5\nLOOP (x1) { x0 = x0 + 1 }", [-2]) === 5n, "negative count");
+  assert(run("whileloop", "x0 = 0\nLOOP (x1) { WHILE (x1 != 0) { x1 = x1 - 1  x0 = x0 + 1 } }", [2]) === 2n, "LOOP and WHILE");
+});
+test("WHILE + LOOP: LOOP over a variable without a value is an error", () => {
+  const e = parseError("whileloop", "INPUT n\nLOOP (k) { n = n + 1 }");
+  assert(e.line === 2 && /no value/.test(e.message), e.message);
+});
+test("WHILE has no LOOP, but points to WHILE + LOOP", () =>
+  assert(/WHILE \+ LOOP/.test(parseError("while", "LOOP (x1) { x0 = x0 + 1 }").message), "hint"));
 test("WHILE: function variables are local", () =>
   assert(run("while", "FUN f(a) { x := 7  RETURN a }\nx := 1\ny := f(x)\nx0 := f(x)", []) === 1n, "x changed"));
 test("WHILE: unknown function", () => parseError("while", "x := g(1)"));
@@ -263,6 +275,8 @@ test("permalink: LANGUAGE line round trip", () => {
   const code = "INPUT x\nOUTPUT y\ny = x + 1\n";
   const d = decodePermalinkProgram(encodePermalinkProgram("WHILE", code));
   assert(d.language === "WHILE" && d.code === code, JSON.stringify(d));
+  const d2 = decodePermalinkProgram(encodePermalinkProgram("WHILE + LOOP", code));
+  assert(d2.language === "WHILE + LOOP" && d2.code === code, JSON.stringify(d2));
   let rejected = false;
   try { decodePermalinkProgram("x0 = 0;\n"); } catch { rejected = true; }
   assert(rejected, "a program without LANGUAGE line must be rejected");

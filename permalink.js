@@ -29,7 +29,7 @@ function encodePermalinkProgram(langName, code) {
 
 /** Split stored text into { language, code }. Text without a LANGUAGE line was not stored by this page. */
 function decodePermalinkProgram(text) {
-  const m = /^LANGUAGE[ \t]+(\S+)[ \t]*(\r?\n|$)/i.exec(text);
+  const m = /^LANGUAGE[ \t]+([^\r\n]*?)[ \t]*(\r?\n|$)/i.exec(text); // the name may contain spaces
   if (!m) throw new Error("this link does not belong to a program shared from this page");
   return { language: m[1], code: text.slice(m[0].length) };
 }
