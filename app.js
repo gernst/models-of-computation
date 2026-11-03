@@ -302,11 +302,12 @@ function updateMinValue() {
 
 // ---------------------------------------------------------------- permalinks (see permalink.js)
 
+const permalinksOn = permalinksAvailable(location.protocol); // see permalink.js
 const permalinkUrl = id => location.href.split("#")[0] + "#ex=" + id;
 
 /** Show the link of the program in the address bar, or remove it (id = null). */
 function setPermalink(id) {
-  $("copyLink").hidden = !(id && PERMALINK_SERVER);
+  $("copyLink").hidden = !(id && permalinksOn);
   const url = id ? permalinkUrl(id) : location.href.split("#")[0];
   if (url !== location.href) history.replaceState(null, "", url);
 }
@@ -343,7 +344,7 @@ async function share() {
 /** Open the program of a link  …#ex=<id>  and keep it under "Your programs". */
 async function loadShared() {
   const m = /^#ex=([A-Za-z0-9_-]+)$/.exec(location.hash);
-  if (!m || !PERMALINK_SERVER) return;
+  if (!m || !permalinksOn) return;
   try {
     const { language, code } = await loadPermalink(m[1]);
     const l = LANGUAGES.find(l => l.name.toUpperCase() === language.toUpperCase());
@@ -370,7 +371,7 @@ $("copyLink").addEventListener("click", () => showLink(currentProgram().permalin
 $("delete").addEventListener("click", deleteCurrent);
 $("run").addEventListener("click", run);
 $("check").addEventListener("click", check);
-$("share").hidden = !PERMALINK_SERVER;
+$("share").hidden = !permalinksOn;
 $("share").addEventListener("click", share);
 window.addEventListener("hashchange", loadShared);
 $("inputs").addEventListener("input", edited);

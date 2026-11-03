@@ -1,15 +1,26 @@
 "use strict";
-// Permalinks, stored by an external permalink service with this interface:
+// Permalinks, stored by a permalink service with this interface:
 //   POST save-perma.php   form field prog1 = program text   → HTML with a link  …/?ex=<id>
 //   GET  ?ex=<id>                                            → HTML page with the program in <textarea id="prog1">
 // The stored text starts with a line  LANGUAGE <name>,  which is removed again when loading.
 // Our own links look like  index.html#ex=<id>.
 //
-// The browser can only read the answers if the service allows requests from this page
-// (HTTP header Access-Control-Allow-Origin). While PERMALINK_SERVER is null, the Share button
-// is hidden. When setting it, also describe the service in the Datenschutz section of impressum.html.
+// PERMALINK_SERVER is where the service is, ending in "/":
+//   "./"                    the directory of this page: the page must be installed next to
+//                           save-perma.php, on the same web server (no CORS needed);
+//                           permalinks are off when the page is opened as a file (e.g. the bundle)
+//   "https://host/dir/"     another server: it must allow requests from this page (CORS header
+//                           Access-Control-Allow-Origin)
+//   null                    no permalinks: the Share button is hidden
+// The Datenschutz section of impressum.html describes the service; keep it in line with this.
 
-const PERMALINK_SERVER = null; // URL of the service, ending in "/"
+const PERMALINK_SERVER = "./";
+
+/** Are permalinks available here? A relative PERMALINK_SERVER needs a web server, not a file. */
+function permalinksAvailable(protocol) {
+  if (PERMALINK_SERVER === null) return false;
+  return /^https?:\/\//.test(PERMALINK_SERVER) || protocol === "http:" || protocol === "https:";
+}
 
 /** The text that is stored: a LANGUAGE line, then the program. */
 function encodePermalinkProgram(langName, code) {

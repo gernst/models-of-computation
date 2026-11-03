@@ -33,7 +33,7 @@ Open `index.html` in a browser (double-click works).
 | `lang-primrec.js` | PRIMREC, primitive recursion: `zero`, `succ`, `pi[n,i]`, `COMP(…)`, `REC(g,h)` |
 | `programs.js` | the user's programs in the browser (history, Delete) |
 | `transfer.js` | export and import of programs as a file; **disabled** (not loaded by `index.html`) |
-| `permalink.js` | permalinks via an external service; **off** until `PERMALINK_SERVER` is set (needs CORS on that server) |
+| `permalink.js` | permalinks via a `save-perma.php` service; `PERMALINK_SERVER = "./"`: the one next to the page (off when opened as a file) |
 | `test.js` | `node test.js` runs every example and some unit tests |
 
 ## Adding a language
