@@ -64,6 +64,10 @@ Helpers from `common.js`:
 `lang-loop.js` or `lang-while.js` (about 100 lines each) are good templates.
 A GOTO language, for example, needs only a new parser and a loop over a program counter.
 
+## Version
+
+The version number is shown at the top right of the page (`<span class="version">` in `index.html`). It is updated when a major change is committed.
+
 ## Deploy
 
 Copy these files to any web server, for example:
