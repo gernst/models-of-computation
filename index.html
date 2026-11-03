@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Computability Workbench</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <h1>Computability Workbench</h1>
+    <p>LOOP · WHILE · PRIMREC</p>
+  </header>
+  <p class="intro">
+    Write and run programs in the small models of computation from the lecture
+    Theoretische Informatik: LOOP programs, WHILE programs and primitive recursive functions.
+    Choose a language and an example, enter inputs and press Run.
+    Turn on Trace to follow the computation step by step, or state what a program should
+    compute and test it under Verification.
+    Everything runs in your browser, and your programs are stored locally.
+  </p>
+
+  <div class="row">
+    <label>Language <select id="language"></select></label>
+    <label>Example <select id="example"></select></label>
+    <button id="new" title="Start a new, empty program (your current program is kept)">New</button>
+  </div>
+
+  <div class="editor">
+    <pre id="gutter" aria-hidden="true"></pre>
+    <div class="code-wrap">
+      <pre id="highlight" aria-hidden="true"></pre>
+      <textarea id="code" spellcheck="false" wrap="off" autocapitalize="off" autocomplete="off" aria-label="Program" placeholder="Write your program here (see Syntax help below)"></textarea>
+    </div>
+  </div>
+
+  <div class="row">
+    <label>Inputs <input id="inputs" placeholder="e.g. 3, 4"></label>
+    <button id="run" class="primary" title="Ctrl+Enter">Run</button>
+    <button id="share" title="Store the program on the permalink server and get a link to it" hidden>Share</button>
+    <label><input type="checkbox" id="trace"> Trace</label>
+    <label>Step limit <input id="maxSteps" type="number" value="1000000" min="1"></label>
+    <button id="delete" class="danger" title="Delete this program from your browser">Delete</button>
+  </div>
+
+  <div class="section-label" id="outputLabel">Output</div>
+  <pre id="output" aria-labelledby="outputLabel"></pre>
+
+  <details>
+    <summary>Syntax help</summary>
+    <pre id="help"></pre>
+  </details>
+
+  <details>
+    <summary>Verification</summary>
+    <div class="row">
+      <button id="check">Check ENSURES</button>
+      <label>for all inputs from <span id="minValue">0</span> to <input id="maxValue" type="number" value="5" min="0"></label>
+    </div>
+    <pre>Header lines, in this order (after INPUT and OUTPUT):
+  REQUIRES &lt;condition&gt;     optional: only test inputs satisfying the condition
+  ENSURES  &lt;condition&gt;     must hold after the program has finished
+
+Use the names from INPUT and OUTPUT (default: inputs x1, x2, …, result x0).
+Inputs refer to their initial values.
+Operators: || &amp;&amp; ! == != &lt; &lt;= &gt; &gt;= + - * / % ^ ( )
+"Check" runs the program on all inputs up to the given maximum. This is testing, not a proof.</pre>
+  </details>
+  <footer><a href="impressum.html">Impressum &amp; Datenschutz</a></footer>
+</main>
+
+<script src="common.js"></script>
+<script src="lang-loop.js"></script>
+<script src="lang-while.js"></script>
+<script src="lang-primrec.js"></script>
+<script src="programs.js"></script>
+<script src="permalink.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

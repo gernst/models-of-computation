@@ -1,0 +1,167 @@
+:root {
+  --bg: #fafaf8;
+  --panel: #ffffff;
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --border: #d4d4d8;
+  --accent: #1f5fbf;
+  --ok: #17733a;
+  --bad: #b3261e;
+  --hl-keyword: #1f5fbf;
+  --hl-spec: #8a3ab9;
+  --hl-number: #b35c00;
+  --hl-comment: #7a7a80;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #18181b;
+    --panel: #232327;
+    --text: #e8e8ea;
+    --muted: #9a9aa2;
+    --border: #3f3f46;
+    --accent: #7aa7f0;
+    --ok: #5cc985;
+    --bad: #f2867c;
+    --hl-keyword: #7aa7f0;
+    --hl-spec: #c792ea;
+    --hl-number: #f0a35e;
+    --hl-comment: #8a8a92;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 system-ui, sans-serif;
+}
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px;
+}
+header { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
+h1 { font-size: 1.4rem; margin: 0 0 8px; }
+header p { margin: 0; color: var(--muted); }
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin: 10px 0;
+}
+label { color: var(--muted); }
+select, input, button {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+#inputs { width: 12em; font-family: var(--mono); }
+#maxSteps { width: 9em; }
+#maxValue { width: 4.5em; }
+button { cursor: pointer; padding: 5px 14px; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--bg); font-weight: 600; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+button.danger:hover { background: var(--bad); color: var(--bg); }
+button:disabled { opacity: 0.4; cursor: default; }
+button.danger:disabled:hover { background: none; color: var(--bad); }
+
+.editor {
+  display: flex;
+  height: 50vh;
+  min-height: 240px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+#gutter, #code, #highlight {
+  font: 14px/20px var(--mono);
+  margin: 0;
+  padding: 8px;
+  tab-size: 2;
+}
+#gutter {
+  overflow: hidden;
+  text-align: right;
+  color: var(--muted);
+  border-right: 1px solid var(--border);
+  user-select: none;
+  min-width: 3em;
+}
+/* Syntax highlighting: a coloured <pre> lies exactly behind a textarea with transparent text. */
+.code-wrap { position: relative; flex: 1; overflow: hidden; }
+#highlight, #code {
+  position: absolute;
+  inset: 0;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+#highlight {
+  overflow: hidden;
+  color: var(--text);
+  padding-bottom: 60px; /* lets it scroll as far as the textarea (scrollbar) */
+  padding-right: 60px;
+}
+#code {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text);
+}
+#code::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); color: transparent; }
+.hl-keyword { color: var(--hl-keyword); }
+.hl-spec { color: var(--hl-spec); }
+.hl-number { color: var(--hl-number); }
+.hl-comment { color: var(--hl-comment); }
+
+pre { white-space: pre-wrap; }
+.section-label { color: var(--muted); margin: 14px 0 4px; }
+#output { margin-top: 0; }
+#output {
+  font: 14px/1.45 var(--mono);
+  min-height: 3em;
+  max-height: 40vh;
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+}
+#output.ok { border-color: var(--ok); }
+#output.bad { border-color: var(--bad); color: var(--bad); }
+details { margin-top: 12px; }
+summary { cursor: pointer; color: var(--accent); }
+details pre { font: 13px/1.45 var(--mono); overflow-x: auto; white-space: pre; }
+
+footer {
+  margin-top: 32px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 0.9em;
+}
+a { color: var(--accent); }
+
+/* Impressum page */
+main.text { max-width: 680px; }
+main.text h1 { margin: 16px 0; }
+main.text h2 { font-size: 1.05rem; margin: 24px 0 6px; }
+main.text p { margin: 0 0 10px; }
+.todo { background: color-mix(in srgb, var(--bad) 18%, transparent); padding: 0 4px; border-radius: 3px; }
+.intro { margin: 4px 0 12px; color: var(--muted); }
+
+/* buttons in the output, e.g. "Undo" */
+#output button { font: inherit; font-size: 0.9em; padding: 1px 8px; margin-left: 4px; }
