@@ -18,7 +18,7 @@ Open `index.html` in a browser (double-click works).
   ENSURES  quotient == x / y
   ```
   This is testing, not a proof.
-- Every program the user writes or edits is kept in the browser (`localStorage`, no limit; the browser is asked to keep it persistently) and listed under "Your programs" in the Example menu; unchanged examples are not stored. Loading an example never deletes anything, and Delete can be undone. Shared programs are never changed: editing one creates a copy. On page load, the most recently edited program is shown. Under "Your programs" (bottom of the page) all programs can be exported to a JSON file and imported again; when importing, the user picks which programs to take over (All/None), and for a program with the same name chooses "add next to yours" or "replace yours". Programs with the same name and the same code or date are already there and skipped. Increasing `STORAGE_VERSION` in `programs.js` deletes all saved programs, so only do that if the stored format changes; changed examples need no new version.
+- Every program the user writes or edits is kept in the browser (`localStorage`, no limit) and listed under "Your programs" in the Example menu; unchanged examples are not stored. Loading an example never deletes anything, and Delete can be undone. Shared programs are never changed: editing one creates a copy. On page load, the most recently edited program is shown. Export and import of programs (`transfer.js`) is implemented but disabled: `index.html` does not load it, so it is not part of the page or the bundle. Increasing `STORAGE_VERSION` in `programs.js` deletes all saved programs, so only do that if the stored format changes; changed examples need no new version.
 
 ## Files
 
@@ -32,6 +32,7 @@ Open `index.html` in a browser (double-click works).
 | `lang-while.js` | WHILE over the integers |
 | `lang-primrec.js` | PRIMREC, primitive recursion: `zero`, `succ`, `pi[n,i]`, `COMP(…)`, `REC(g,h)` |
 | `programs.js` | the user's programs in the browser (history, Delete) |
+| `transfer.js` | export and import of programs as a file; **disabled** (not loaded by `index.html`) |
 | `permalink.js` | permalinks via an external service; **off** until `PERMALINK_SERVER` is set (needs CORS on that server) |
 | `test.js` | `node test.js` runs every example and some unit tests |
 

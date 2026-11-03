@@ -79,115 +79,14 @@ function updateMenu() {
 
 // ---------------------------------------------------------------- keeping the user's programs
 
-let storageWarned = false, persistenceRequested = false;
+let storageWarned = false;
 
 /** Save the programs of the current language; warn once if the browser refuses. */
 function store() {
   if (!savePrograms(lang, programs) && !storageWarned) {
     storageWarned = true;
-    show('Warning: your programs could not be saved in this browser (storage full or disabled).\n' +
-         'Use "Export all programs" under "Your programs" below to keep a copy.', "bad");
+    show("Warning: your programs could not be saved in this browser (storage full or disabled).", "bad");
   }
-  if (!persistenceRequested && programs.length) { persistenceRequested = true; requestPersistence(); }
-}
-
-/** Ask the browser not to delete the stored programs, e.g. when disk space is low. */
-async function requestPersistence() {
-  try {
-    if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist();
-  } catch { /* not supported */ }
-  updateStorageInfo();
-}
-
-async function updateStorageInfo() {
-  let persistent = false;
-  try { persistent = await navigator.storage.persisted(); } catch { /* not supported */ }
-  $("storageInfo").textContent = persistent
-    ? "This browser has agreed to keep them."
-    : "The browser may delete them, e.g. when you clear browsing data, in a private window, or when disk space is low.";
-}
-
-function exportAll() {
-  const data = exportPrograms(LANGUAGES);
-  const n = Object.values(data.programs).reduce((sum, list) => sum + list.length, 0);
-  if (n === 0) return show("You have no programs of your own to export yet.", "");
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2) + "\n"], { type: "application/json" }));
-  a.download = `tcs-workbench-programs-${new Date().toISOString().slice(0, 10)}.json`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-  show(`Exported ${n} program${n === 1 ? "" : "s"} to the file ${a.download}.`, "ok");
-}
-
-async function importFile(file) {
-  try {
-    let data;
-    try { data = JSON.parse(await file.text()); } catch { throw new Error("the file is not valid JSON"); }
-    const plan = planImport(data, LANGUAGES);
-    const notes = [];
-    if (plan.same) notes.push(`${plan.same} already there`);
-    if (plan.unknown) notes.push(`${plan.unknown} of unknown languages ignored`);
-    if (plan.items.length === 0) return show(`Import: nothing new in this file (${notes.join(", ") || "it is empty"}).`, "ok");
-    const choices = await askImport(plan, notes);
-    if (!choices) return show("Import cancelled; nothing was changed.", "");
-    const r = applyImport(plan, choices);
-    programs = loadPrograms(lang);
-    if (current && !programs.some(p => p.id === current)) showMostRecent(); // replaced by the import
-    else updateMenu();
-    const parts = [`${r.added} program${r.added === 1 ? "" : "s"} added`];
-    if (r.replaced) parts.push(`${r.replaced} replaced`);
-    if (r.skipped) parts.push(`${r.skipped} not imported`);
-    show(`Import: ${[...parts, ...notes].join(", ")}.` + (r.ok ? "" : "\nWarning: saving failed (storage full or disabled)."),
-         r.ok ? "ok" : "bad");
-  } catch (e) {
-    show("Import failed: " + e.message, "bad");
-  }
-}
-
-/** Let the user choose which programs to import. Resolves to the choices (see applyImport), or null. */
-function askImport(plan, notes) {
-  const dialog = $("importDialog"), list = $("importList");
-  const el = (tag, props = {}, ...children) => { const e = Object.assign(document.createElement(tag), props); e.append(...children); return e; };
-  list.replaceChildren();
-  $("importNotes").textContent = notes.length ? `Not listed: ${notes.join(", ")}.` : "";
-  // in the dialog: the full date, to tell versions apart
-  const describe = p => {
-    const lines = p.code.split("\n").filter(l => l.trim() !== "").length;
-    const date = new Date(p.edited).toLocaleString("en-GB",
-      { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    return `${programName(p.code) ?? "(no name)"} · ${date} · ${lines} line${lines === 1 ? "" : "s"}`;
-  };
-  const rows = plan.items.map(({ lang, imported, existing }) => {
-    const newest = Math.max(imported.edited, ...existing.map(p => p.edited));
-    const tag = p => (existing.length && p.edited === newest ? " (newer)" : "");
-    const box = el("input", { type: "checkbox", checked: true });
-    const row = el("div", { className: "import-item" },
-      el("label", {}, box, ` ${lang.name}: ${describe(imported)}${tag(imported)}`));
-    let replace = null;
-    if (existing.length) {
-      row.append(el("div", { className: "muted" },
-        "You already have: " + existing.map(p => describe(p) + tag(p)).join(";  ")));
-      if (existing.length === 1) {
-        replace = el("select", {}, el("option", { value: "add" }, "add next to yours"),
-                                   el("option", { value: "replace" }, "replace yours"));
-        row.append(el("div", {}, "If imported: ", replace));
-      }
-    }
-    list.append(row);
-    return { box, replace };
-  });
-  $("importAll").onclick = () => rows.forEach(r => { r.box.checked = true; });
-  $("importNone").onclick = () => rows.forEach(r => { r.box.checked = false; });
-  return new Promise(resolve => {
-    const done = ok => {
-      dialog.close();
-      resolve(ok ? rows.map(r => (!r.box.checked ? "skip" : r.replace?.value ?? "add")) : null);
-    };
-    $("importOk").onclick = () => done(true);
-    $("importCancel").onclick = () => done(false);
-    dialog.oncancel = e => { e.preventDefault(); done(false); }; // Escape key
-    dialog.showModal();
-  });
 }
 
 /** The user changed the code or the inputs: store it (see recordEdit in programs.js). */
@@ -452,13 +351,6 @@ $("language").addEventListener("change", e => selectLanguage(e.target.value));
 $("example").addEventListener("change", e => onMenuChange(e.target.value));
 $("new").addEventListener("click", newProgram);
 $("duplicate").addEventListener("click", duplicateProgram);
-$("export").addEventListener("click", exportAll);
-$("import").addEventListener("click", () => $("importFile").click());
-$("importFile").addEventListener("change", e => {
-  if (e.target.files[0]) importFile(e.target.files[0]);
-  e.target.value = ""; // allow importing the same file again
-});
-updateStorageInfo();
 $("copyLink").addEventListener("click", () => showLink(currentProgram().permalink, "Permalink"));
 $("delete").addEventListener("click", deleteCurrent);
 $("run").addEventListener("click", run);

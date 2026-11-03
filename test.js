@@ -5,6 +5,7 @@ const fs = require("fs"), path = require("path"), vm = require("vm");
 
 const html = fs.readFileSync(path.join(__dirname, "index.html"), "utf8");
 const scripts = [...html.matchAll(/<script src="([^"]+)"/g)].map(m => m[1]).filter(f => f !== "app.js");
+if (!scripts.includes("transfer.js")) scripts.push("transfer.js"); // export/import: tested even while disabled
 const storage = new Map(); // stands in for the browser's localStorage
 const localStorage = { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, String(v)) };
 const ctx = vm.createContext({ console, localStorage });
