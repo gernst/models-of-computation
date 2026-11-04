@@ -375,6 +375,121 @@ WHILE (n != 0) {
   n = n + 1
 }
 ` },
+    {
+      name: "Ackermann", inputs: "2, 2", code:
+`PROGRAM Ackermann
+INPUT m, n
+OUTPUT a
+REQUIRES m >= 0 AND n >= 0
+
+// a(0, n)         = n + 1
+// a(m + 1, 0)     = a(m, 1)
+// a(m + 1, n + 1) = a(m, a(m + 1, n))
+//
+// Without recursion: a stack of the pending values of m, stored in the
+// single number s, with digits m + 1 in base B = m + 2 (the top of the stack
+// is the last digit; s = 0 is the empty stack). Only x = c, x = x ± c and
+// WHILE (x != 0) are used: an "IF" is a WHILE loop on a flag (0 or 1) that
+// runs at most once, and a value is copied by moving it to a helper and back.
+
+t = 0
+c = 0
+r = 0
+q = 0
+k = 0
+z = 0
+v = 0
+caseA = 0
+caseB = 0
+caseC = 0
+other = 0
+vnz = 0
+
+// B = m + 2, and the stack holds m: s = m + 1
+B = 2
+s = 1
+WHILE (m != 0) { m = m - 1; B = B + 1; s = s + 1 }
+
+WHILE (s != 0) {
+  // ---- pop the top: v = (s mod B) - 1,  s = s div B
+  q = 0
+  v = 0
+  k = 0                                   // k = B
+  WHILE (B != 0) { B = B - 1; k = k + 1; c = c + 1 }
+  WHILE (c != 0) { c = c - 1; B = B + 1 }
+  WHILE (s != 0) {                        // walk s down; every B steps: q = q + 1
+    s = s - 1
+    v = v + 1
+    k = k - 1
+    z = 1                                 // z = 1 if k = 0
+    WHILE (k != 0) { k = k - 1; t = t + 1; z = 0 }
+    WHILE (t != 0) { t = t - 1; k = k + 1 }
+    WHILE (z != 0) {                      // IF k = 0: a whole block of B
+      z = 0
+      q = q + 1
+      v = 0
+      WHILE (B != 0) { B = B - 1; k = k + 1; c = c + 1 }
+      WHILE (c != 0) { c = c - 1; B = B + 1 }
+    }
+  }
+  WHILE (q != 0) { q = q - 1; s = s + 1 } // s = q
+  v = v - 1                               // the digit was v + 1
+
+  // ---- which case?  A: v = 0   B: v > 0, n = 0   C: v > 0, n > 0
+  caseA = 1
+  other = 0
+  WHILE (v != 0) { v = v - 1; t = t + 1; caseA = 0; other = 1 }
+  WHILE (t != 0) { t = t - 1; v = v + 1 }
+  caseB = 0
+  caseC = 0
+  vnz = 0
+  WHILE (other != 0) {                    // IF v > 0: test n
+    other = 0
+    vnz = 1
+    caseB = 1
+    WHILE (n != 0) { n = n - 1; t = t + 1; caseB = 0; caseC = 1 }
+    WHILE (t != 0) { t = t - 1; n = n + 1 }
+  }
+
+  WHILE (caseA != 0) {                    // a(0, n) = n + 1
+    caseA = 0
+    n = n + 1
+  }
+  WHILE (vnz != 0) {                      // v > 0: push v - 1, i.e. s = s * B + v
+    vnz = 0
+    r = 0
+    WHILE (s != 0) {
+      s = s - 1
+      WHILE (B != 0) { B = B - 1; r = r + 1; c = c + 1 }
+      WHILE (c != 0) { c = c - 1; B = B + 1 }
+    }
+    WHILE (v != 0) { v = v - 1; r = r + 1; t = t + 1 }
+    WHILE (t != 0) { t = t - 1; v = v + 1 }
+    WHILE (r != 0) { r = r - 1; s = s + 1 }
+  }
+  WHILE (caseB != 0) {                    // a(v, 0) = a(v - 1, 1)
+    caseB = 0
+    n = 1
+  }
+  WHILE (caseC != 0) {                    // a(v, n) = a(v - 1, a(v, n - 1)):
+    caseC = 0                             // also push v, i.e. s = s * B + v + 1
+    r = 0
+    WHILE (s != 0) {
+      s = s - 1
+      WHILE (B != 0) { B = B - 1; r = r + 1; c = c + 1 }
+      WHILE (c != 0) { c = c - 1; B = B + 1 }
+    }
+    WHILE (v != 0) { v = v - 1; r = r + 1; t = t + 1 }
+    WHILE (t != 0) { t = t - 1; v = v + 1 }
+    r = r + 1
+    WHILE (r != 0) { r = r - 1; s = s + 1 }
+    n = n - 1
+  }
+}
+
+a = 0                                     // the result
+WHILE (n != 0) { n = n - 1; a = a + 1 }
+` },
   ],
 });
 

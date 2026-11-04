@@ -31,6 +31,7 @@ Open `index.html` in a browser (double-click works).
 | `lang-loop.js` | LOOP over the natural numbers |
 | `lang-while.js` | WHILE over the integers |
 | `lang-primrec.js` | PRIMREC, primitive recursion: `zero`, `succ`, `pi[n,i]`, `COMP(…)`, `REC(g,h)` |
+| `lang-primfun.js` | PRIMFUN: primitive recursion as equations, `FUN f(x, y + 1) = …` |
 | `programs.js` | the user's programs in the browser (history, Delete) |
 | `transfer.js` | export and import of programs as a file; **disabled** (not loaded by `index.html`) |
 | `permalink.js` | permalinks: stored with `save-perma.php`, loaded from `experiments/perma/<id>.prog`; `PERMALINK_SERVER = "./"`: next to the page (off when opened as a file) |
@@ -93,6 +94,8 @@ You can also push to GitHub or GitLab and enable Pages for the repository root.
 - **All languages:** an optional first line `PROGRAM <name>` names the program (only comments may come before it); the name is shown in the Example menu under "Your programs".
 - **LOOP/WHILE:** variables can have any name. The optional header `INPUT a, b` / `OUTPUT c` names the inputs and the result (default `x1, x2, …` and `x0`); all other variables start at 0. Loop bodies use braces: `LOOP (x1) { … }` and `WHILE (x1 != 0) { … }`. Keywords can be in any case. Assignments are written `x = y + 1` (`:=` is accepted too). Semicolons between statements are optional (one statement per line by convention).
 - **PRIMREC:** natural numbers; recursion is on the *last* argument: `f(x̄,0) = g(x̄)`, `f(x̄,y+1) = h(x̄, y, f(x̄,y))`.
+- **PRIMFUN** (`lang-primfun.js`) is primitive recursion written as equations: `FUN f(x, 0) = e0` followed by `FUN f(x, y + 1) = e1`, where `e1` may use `f` only as `f(x, y)`; also `FUN f(x, y) = e` without recursion. Expressions are numbers, variables, `succ(e)` and calls of functions defined before; no projections. In ENSURES, inputs are named like the parameters of the main function and the result like the function.
+- **MUREC** is PRIMREC with the minimization operator `mu(f)` in addition (same parser with a flag, in `lang-primrec.js`): `mu(f)(x̄)` is the least y with `f(x̄, y) = 0`; if there is none, the search does not stop (step limit).
 - **Steps:** a step is one executed assignment, loop iteration or WHILE test, or one function application or call.
 
 ## License

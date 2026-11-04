@@ -44,9 +44,16 @@ const SPECS = {
   "while/Subtraction": "diff == x - y",
   "while/Multiplication": "p == x * y",
   "while/Fibonacci": "", // not expressible in ENSURES; see the test below
+  "while/Ackermann": "", // see the test below
   "whileloop/Sum 1 + … + n": "2 * s == n * (n + 1)",
   "primrec/Addition": "x0 == x1 + x2",
   "primrec/Predecessor": "x0 == IF x1 == 0 THEN 0 ELSE x1 - 1",
+  "primfun/Addition": "add == x + y",
+  "primfun/Predecessor": "pred == IF y == 0 THEN 0 ELSE y - 1",
+  "primfun/Factorial": "", // see the test below
+  "murec/Count up": "x0 == x1",
+  "murec/Square root": "x0 * x0 <= x1 AND x1 < (x0 + 1) * (x0 + 1)",
+  "murec/Collatz": "", // see the test below
 };
 
 // Every example parses and runs, and satisfies its specification.
@@ -55,7 +62,7 @@ for (const lang of LANGUAGES) {
     test(`${lang.name} / ${ex.name}`, () => {
       const warnings = lang.parse(splitDirectives(ex.code).code).warnings ?? [];
       assert(warnings.length === 0, "warnings: " + warnings.map(w => `line ${w.line}: ${w.message}`).join("; "));
-      if (ex.name === "Infinite loop") return;
+      if (ex.name === "Infinite loop" || ex.name === "Undefined") return;
       const inputs = (ex.inputs ?? "").split(/[\s,]+/).filter(Boolean);
       run(lang.id, ex.code, inputs);
       const spec = SPECS[`${lang.id}/${ex.name}`];
@@ -111,6 +118,12 @@ test("WHILE: Fibonacci", () => {
   const fib = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
   fib.forEach((v, n) => assert(run("while", ex.code, [n]) === BigInt(v), `fib(${n})`));
 });
+test("WHILE: Ackermann", () => {
+  const ex = byId("while").examples.find(e => e.name === "Ackermann");
+  const A = (m, n) => m === 0 ? n + 1 : n === 0 ? A(m - 1, 1) : A(m - 1, A(m, n - 1));
+  for (const [m, n] of [[0, 0], [0, 3], [1, 0], [1, 2], [2, 0], [2, 1], [2, 2], [3, 0]])
+    assert(run("while", ex.code, [m, n], 1e7) === BigInt(A(m, n)), `A(${m}, ${n})`);
+});
 test("WHILE + LOOP: LOOP reads the count once; negative counts mean no iterations", () => {
   assert(run("whileloop", "LOOP (x1) { x1 = x1 + 1  x0 = x0 + 1 }", [3]) === 3n, "count read once");
   assert(run("whileloop", "x0 = 5\nLOOP (x1) { x0 = x0 + 1 }", [-2]) === 5n, "negative count");
@@ -156,6 +169,51 @@ test("PR: zero[n] and succ", () =>
   assert(run("primrec", "three = COMP(succ, COMP(succ, COMP(succ, zero[2])))", [7, 8]) === 3n, "wrong result"));
 test("PR: numbers are not functions", () => parseError("primrec", "f = COMP(succ, 0)"));
 test("PR: built-in names cannot be redefined", () => parseError("primrec", "succ = pi[1,1]"));
+test("PRIMFUN: Factorial", () => {
+  const ex = byId("primfun").examples.find(e => e.name === "Factorial");
+  [1, 1, 2, 6, 24, 120].forEach((v, n) => assert(run("primfun", ex.code, [n]) === BigInt(v), `fac(${n})`));
+});
+test("PRIMFUN: definitions without recursion, numbers, nested calls", () => {
+  const code = "FUN add(x, 0) = x\nFUN add(x, y + 1) = succ(add(x, y))\nFUN f(a, b) = add(add(a, b), 10)";
+  assert(run("primfun", code, [2, 3]) === 15n, "wrong result");
+});
+test("PRIMFUN: only primitive recursion is accepted", () => {
+  for (const code of [
+    "FUN f(x, 0) = f(x, 0)\nFUN f(x, y + 1) = x",            // recursion in the case for 0
+    "FUN f(x, 0) = x\nFUN f(x, y + 1) = f(y, x)",            // wrong recursive call
+    "FUN f(x, 0) = x\nFUN f(x, y + 1) = f(x, succ(y))",      // wrong recursive call
+    "FUN f(x) = f(x)",                                        // recursion without the two equations
+    "FUN f(x, 0) = x",                                        // the equation for y + 1 is missing
+    "FUN f(x, y + 1) = x",                                    // the equation for 0 is missing
+    "FUN f(0, x) = x",                                        // not on the last argument
+    "FUN f(x) = y",                                           // unknown variable
+    "FUN f(x) = g(x)",                                        // unknown function
+    "FUN g(x) = x\nFUN f(x) = g(x, x)",                       // wrong number of arguments
+    "FUN f(x, x) = x",                                        // variable twice
+  ]) parseError("primfun", code);
+});
+test("PRIMFUN: check uses the parameter names and the function name", () => {
+  const r = checkProgram(byId("primfun"), "ENSURES add == x + y + 1\nFUN add(x, 0) = x\nFUN add(x, y + 1) = succ(add(x, y))", 3, 1000);
+  assert(!r.ok && r.names.join() === "x,y" && r.output === "add", JSON.stringify(r, (k, v) => typeof v === "bigint" ? String(v) : v));
+});
+test("MUREC: mu finds the least y", () => {
+  // mu of f(x, y) = x - y (at least 0): the least y with x - y = 0 is x
+  const code = "pred = REC(zero, pi[2,1])\nsub = REC(pi[1,1], COMP(pred, pi[3,3]))\nid = mu(sub)";
+  assert(run("murec", code, [5]) === 5n && run("murec", code, [0]) === 0n, "wrong result");
+});
+test("MUREC: Collatz", () => {
+  const ex = byId("murec").examples.find(e => e.name === "Collatz");
+  const steps = n => { let k = 0; while (n > 1) { n = n % 2 ? 3 * n + 1 : n / 2; k++; } return k; };
+  for (const n of [1, 2, 3, 4, 5, 6, 12]) assert(run("murec", ex.code, [n], 1e7) === BigInt(steps(n)), `steps(${n})`);
+});
+test("MUREC: no y stops at the step limit", () => {
+  try { run("murec", "f = COMP(succ, pi[2,2])\ng = mu(f)", [3], 1000); }
+  catch (e) { assert(/step limit/.test(e.message), e.message); return; }
+  throw new Error("did not stop");
+});
+test("MUREC: mu needs an argument to search", () => parseError("murec", "c = mu(zero)"));
+test("PRIMREC has no mu, but points to MUREC", () =>
+  assert(/MUREC/.test(parseError("primrec", "f = mu(pi[1,1])").message), "hint"));
 test("PR: no recursion by name", () => parseError("primrec", "f = REC(zero, COMP(f, pi[2,1]))"));
 test("named inputs and output", () =>
   assert(run("while", "INPUT a, b\nOUTPUT a\nWHILE (b != 0) { a := a + 1  b := b - 1 }", [2, 5]) === 7n, "wrong result"));
