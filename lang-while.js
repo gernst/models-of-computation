@@ -2,7 +2,7 @@
 // WHILE programs over the integers, and WHILE + LOOP: the same with LOOP (x) { P } in addition.
 
 const WHILE_KEYWORDS = ["WHILE", "INPUT", "OUTPUT", "FUN", "RETURN"];
-const WHILE_LOOP_KEYWORDS = [...WHILE_KEYWORDS, "LOOP"];
+const WHILE_LOOP_KEYWORDS = [...WHILE_KEYWORDS, "LOOP", "DEF"]; // DEF: procedures, like FUN
 const MAX_DEPTH = 1000; // maximal nesting of function calls
 
 // ---------------------------------------------------------------- parser
@@ -20,9 +20,9 @@ function parseWhile(code, withLoop = false) {
   if (!p.done()) p.error("'}' without matching '{'");
   for (const c of p.calls) {
     const f = p.funs.get(c.f);
-    if (!f) throw new LangError(`unknown function '${c.f}'`, c.line);
+    if (!f) throw new LangError(`unknown procedure '${c.f}'`, c.line);
     if (f.params.length !== c.args.length)
-      throw new LangError(`function '${c.f}' has ${f.params.length} parameter(s), but is called with ${c.args.length}`, c.line);
+      throw new LangError(`procedure '${c.f}' has ${f.params.length} parameter(s), but is called with ${c.args.length}`, c.line);
   }
   const warnings = [];
   checkWhileInit(body, startState(header), warnings);
@@ -60,7 +60,7 @@ function checkWhileInit(stmts, st, warnings) {
 function parseWhileBlock(p, top = false) {
   const stmts = [];
   for (p.skipSemicolons(); !p.done() && !p.at("}"); p.skipSemicolons()) {
-    if (top && p.atKeyword("FUN")) parseFun(p);
+    if (top && (p.atKeyword("FUN") || (p.withLoop && p.atKeyword("DEF")))) parseFun(p);
     else stmts.push(parseWhileStmt(p));
   }
   return stmts;
@@ -99,9 +99,9 @@ function parseFun(p) {
   const line = p.next().line;
   const t = p.next();
   if (t.type !== "id" || WHILE_KEYWORDS.includes(t.value.toUpperCase()))
-    throw new LangError(`expected a function name but found '${t.value}'`, t.line);
+    throw new LangError(`expected a procedure name but found '${t.value}'`, t.line);
   const name = t.value;
-  if (p.funs.has(name)) throw new LangError(`function '${name}' is defined twice`, t.line);
+  if (p.funs.has(name)) throw new LangError(`procedure '${name}' is defined twice`, t.line);
   const outer = p.vars;
   p.vars = new Set(); // functions have their own, local variables
   p.expect("(");
@@ -116,7 +116,7 @@ function parseFun(p) {
   p.expect("{");
   const body = [];
   for (p.skipSemicolons(); !p.atKeyword("RETURN"); p.skipSemicolons()) {
-    if (p.done() || p.at("}")) p.error(`function '${name}' must end with 'RETURN <variable>'`);
+    if (p.done() || p.at("}")) p.error(`procedure '${name}' must end with 'RETURN <variable>'`);
     body.push(parseWhileStmt(p));
   }
   const returnLine = p.next().line;
@@ -156,8 +156,10 @@ function parseWhileStmt(p) {
     return { type: "loop", x, body: parseBraces(p), line };
   }
   if (p.atKeyword("INPUT") || p.atKeyword("OUTPUT")) p.error("INPUT and OUTPUT must come before the first statement");
-  if (p.atKeyword("FUN")) p.error("functions can only be defined at the top level, not inside a block or function");
-  if (p.atKeyword("RETURN")) p.error("RETURN is only allowed as the last statement of a function");
+  if (p.atKeyword("FUN") || (p.withLoop && p.atKeyword("DEF")))
+    p.error("procedures can only be defined at the top level, not inside a block or procedure");
+  if (p.atKeyword("DEF")) p.error("DEF is not part of WHILE programs; use the language WHILE + LOOP");
+  if (p.atKeyword("RETURN")) p.error("RETURN is only allowed as the last statement of a procedure");
 
   // reset, increment, decrement, call:  x = c  |  x = x + c  |  x = x - c  |  x = f(a, …)
   const x = whileVar(p);
@@ -265,7 +267,19 @@ const WHILE_LOOP_HELP = WHILE_HELP
   .replace("WHILE programs compute on integers", "WHILE + LOOP programs: WHILE programs with LOOP in addition, on integers")
   .replace("  WHILE (x != 0) { P }", `  LOOP (x) { P }        repeat P exactly n times, n = value of x at the start
                         (n <= 0: not at all; x must have a value: an input, or assigned before)
-  WHILE (x != 0) { P }`);
+  WHILE (x != 0) { P }`)
+  .replace("\nThere are no other statements", `  x = f(a, b)           call procedure f; arguments are variables or numbers
+
+Procedures (at the top level, before or after the main program):
+  DEF f(a, b) {
+    P
+    RETURN r            must be the last line
+  }
+Parameters are passed by value (copied); all other variables of a procedure are local
+and start at 0. Procedures may call each other and themselves.
+
+There are no other statements`)
+  .replace("must be programmed with WHILE loops.", "must be programmed with loops or procedures.");
 
 LANGUAGES.push({
   id: "while",
@@ -519,6 +533,54 @@ WHILE (n != 0) {
   }
   n = n - 1
 }
+` },
+    {
+      name: "Fibonacci", inputs: "10", code:
+`PROGRAM Fibonacci
+INPUT n
+OUTPUT x
+REQUIRES n >= 0
+
+// fib(0) = 0, fib(1) = 1, fib(i+2) = fib(i) + fib(i+1)
+
+DEF add(a, b) {         // a + b; a and b are copies of the arguments
+  LOOP (b) {
+    a = a + 1
+  }
+  RETURN a
+}
+
+DEF copy(a) {           // the value of the argument
+  RETURN a
+}
+
+x = 0                   // fib(i)
+y = 1                   // fib(i+1)
+LOOP (n) {
+  z = add(x, y)         // z = x + y
+  x = copy(y)           // x = y
+  y = copy(z)           // y = z
+}
+` },
+    {
+      name: "Division", inputs: "15, 5", code:
+`PROGRAM Division
+INPUT x, y
+OUTPUT q
+REQUIRES x >= 0 AND y > 0 AND x % y == 0
+
+DEF div(a, b) {         // a / b, if a is a multiple of b and b > 0
+  q = 0
+  WHILE (a != 0) {
+    LOOP (b) {
+      a = a - 1
+    }
+    q = q + 1
+  }
+  RETURN q
+}
+
+q = div(x, y)
 ` },
   ],
 });

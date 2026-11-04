@@ -46,6 +46,8 @@ const SPECS = {
   "while/Fibonacci": "", // not expressible in ENSURES; see the test below
   "while/Ackermann": "", // see the test below
   "whileloop/Sum 1 + … + n": "2 * s == n * (n + 1)",
+  "whileloop/Fibonacci": "", // see the test below
+  "whileloop/Division": "q == x / y",
   "primrec/Addition": "x0 == x1 + x2",
   "primrec/Predecessor": "x0 == IF x1 == 0 THEN 0 ELSE x1 - 1",
   "primfun/Addition": "add == x + y",
@@ -113,11 +115,21 @@ test("step limit stops infinite loops", () => {
   catch (e) { assert(/step limit/.test(e.message), e.message); return; }
   throw new Error("did not stop");
 });
-test("WHILE: Fibonacci", () => {
-  const ex = byId("while").examples.find(e => e.name.startsWith("Fibonacci"));
-  const fib = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
-  fib.forEach((v, n) => assert(run("while", ex.code, [n]) === BigInt(v), `fib(${n})`));
+test("WHILE and WHILE + LOOP: Fibonacci", () => {
+  for (const id of ["while", "whileloop"]) {
+    const ex = byId(id).examples.find(e => e.name === "Fibonacci");
+    const fib = [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55];
+    fib.forEach((v, n) => assert(run(id, ex.code, [n]) === BigInt(v), `${id}: fib(${n})`));
+  }
 });
+test("WHILE + LOOP: procedures with DEF", () => {
+  const code = "INPUT x, y\nOUTPUT z\nDEF add(a, b) {\n  LOOP (b) { a = a + 1 }\n  RETURN a\n}\nz = add(x, y)\nz = add(z, 10)";
+  assert(run("whileloop", code, [3, 4]) === 17n, "wrong result");
+  assert(run("whileloop", "DEF id(a) { RETURN a }\nx = 5\ny = id(x)\nx = x + 1\nx0 = id(y)", []) === 5n, "copies by value");
+  parseError("whileloop", "WHILE (x1 != 0) { DEF f(a) { RETURN a } }");
+});
+test("WHILE has no DEF", () =>
+  assert(/WHILE \+ LOOP/.test(parseError("while", "DEF f(a) { RETURN a }").message), "hint"));
 test("WHILE: Ackermann", () => {
   const ex = byId("while").examples.find(e => e.name === "Ackermann");
   const A = (m, n) => m === 0 ? n + 1 : n === 0 ? A(m - 1, 1) : A(m - 1, A(m, n - 1));
