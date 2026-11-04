@@ -17,7 +17,7 @@ function parseLoop(code) {
   return { ...header, vars: [...p.vars], body, warnings };
 }
 
-/** LOOP over a variable without a value is an error, reading one (x = x + c) a warning. */
+/** LOOP over a variable without a value is an error, reading one (x = x + 1) a warning. */
 function checkLoopInit(stmts, st, warnings) {
   for (const s of stmts) {
     if (s.type === "assign") {
@@ -64,18 +64,21 @@ function parseLoopStmt(p) {
   if (p.atKeyword("FUN")) p.error("functions (FUN) are not part of LOOP programs");
   if (p.atKeyword("INPUT") || p.atKeyword("OUTPUT")) p.error("INPUT and OUTPUT must come before the first statement");
 
-  // only reset and increment:  x = c  |  x = x + c
+  // only reset and increment:  x = 0  |  x = x + 1
   const x = loopVar(p);
-  const only = `LOOP only has  ${x} = c  and  ${x} = ${x} + c  (c a number)`;
+  const only = `LOOP only has  ${x} = 0  and  ${x} = ${x} + 1`;
   if (p.at("=") || p.at(":=")) p.next(); // := is accepted, too
   else p.error(`expected '=' after '${x}'`);
-  if (p.peek()?.type === "num") return { type: "assign", x, reset: true, c: p.number(), line };
+  if (p.peek()?.type === "num") {
+    if (p.number() !== 0n) p.error(only);
+    return { type: "assign", x, reset: true, c: 0n, line };
+  }
   const t = p.peek();
   if (t?.type !== "id" || t.value !== x) p.error(only);
   p.next();
   if (!p.at("+")) p.error(only);
   p.next();
-  if (p.peek()?.type !== "num") p.error(only);
+  if (p.peek()?.value !== "1") p.error(only);
   return { type: "assign", x, reset: false, c: p.number(), line };
 }
 
@@ -118,13 +121,13 @@ Header (optional):
   OUTPUT c              the result                  (default: x0)
 
 Statements (keywords in any case; one per line, or separated by optional semicolons):
-  x = c                 set x to the number c        (usually x = 0)
-  x = x + c             increment x by c             (usually x = x + 1)
+  x = 0                 reset x to 0
+  x = x + 1             increment x by 1
   P; P                  execute the two programs in sequence   (the ; may be a line break)
   LOOP (x) { P }        repeat P exactly n times, n = value of x at the start
                         (x must have a value: an input, or assigned before)
 
-There are no other assignments: x = y, x = y + 1 or subtraction must be programmed with loops.
+There are no other assignments: x = 5, x = y, x = y + 1 or subtraction must be programmed with loops.
 Variables can have any name; all non-input variables start at 0, but reading one
 before assigning it gives a warning.
 Comments: // until the end of the line.`,

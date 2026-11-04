@@ -161,16 +161,19 @@ function parseWhileStmt(p) {
   if (p.atKeyword("DEF")) p.error("DEF is not part of WHILE programs; use the language WHILE + LOOP");
   if (p.atKeyword("RETURN")) p.error("RETURN is only allowed as the last statement of a procedure");
 
-  // reset, increment, decrement, call:  x = c  |  x = x + c  |  x = x - c  |  x = f(a, …)
+  // reset, increment, decrement, call:  x = 0  |  x = x + 1  |  x = x - 1  |  x = f(a, …)
   const x = whileVar(p);
-  const only = `WHILE only has  ${x} = c,  ${x} = ${x} + c  and  ${x} = ${x} - c  (c a number), and calls  ${x} = f(…)`;
+  const only = `only  ${x} = 0,  ${x} = ${x} + 1  and  ${x} = ${x} - 1` + (p.withLoop ? `, and calls  ${x} = f(…),  are allowed` : "  are allowed");
   if (p.at("=") || p.at(":=")) p.next(); // := is accepted, too
   else p.error(`expected '=' after '${x}'`);
   if (p.peek()?.type === "id" && p.tokens[p.pos + 1]?.value === "(") {
     const f = p.next().value;
     p.expect("(");
     const args = [];
-    const arg = () => args.push(p.peek()?.type === "num" ? { num: p.number() } : { var: whileVar(p) });
+    const arg = () => {
+      if (p.peek()?.type === "num") p.error("arguments of a call must be variables");
+      args.push({ var: whileVar(p) });
+    };
     if (!p.at(")")) {
       arg();
       while (p.at(",")) { p.next(); arg(); }
@@ -179,13 +182,16 @@ function parseWhileStmt(p) {
     p.calls.push({ f, args, line });
     return { type: "call", x, f, args, line };
   }
-  if (p.peek()?.type === "num") return { type: "assign", x, y: null, op: "+", c: p.number(), line };
+  if (p.peek()?.type === "num") {
+    if (p.number() !== 0n) p.error(only);
+    return { type: "assign", x, y: null, op: "+", c: 0n, line };
+  }
   const t = p.peek();
   if (t?.type !== "id" || t.value !== x) p.error(only);
   const y = whileVar(p);
   if (!(p.at("+") || p.at("-"))) p.error(only);
   const op = p.next().value;
-  if (p.peek()?.type !== "num") p.error(only);
+  if (p.peek()?.value !== "1") p.error(only);
   return { type: "assign", x, y, op, c: p.number(), line };
 }
 
@@ -250,14 +256,14 @@ Header (optional):
   OUTPUT c              the result                  (default: x0)
 
 Statements (keywords in any case; one per line, or separated by optional semicolons):
-  x = c                 set x to the number c        (usually x = 0)
-  x = x + c             increment x by c             (usually x = x + 1)
-  x = x - c             decrement x by c             (may become negative)
+  x = 0                 reset x to 0
+  x = x + 1             increment x by 1
+  x = x - 1             decrement x by 1             (may become negative)
   P; P                  execute the two programs in sequence   (the ; may be a line break)
   WHILE (x != 0) { P }  repeat P as long as x is not 0
                         (the condition is always a single test  x != 0)
 
-There are no other statements: x = y, x = y + 1, IF, or conditions with AND, OR, NOT
+There are no other statements: x = 5, x = y, x = y + 1, IF, or conditions with AND, OR, NOT
 must be programmed with WHILE loops.
 Variables can have any name; all non-input variables start at 0, but reading one
 before assigning it gives a warning.
@@ -268,7 +274,7 @@ const WHILE_LOOP_HELP = WHILE_HELP
   .replace("  WHILE (x != 0) { P }", `  LOOP (x) { P }        repeat P exactly n times, n = value of x at the start
                         (n <= 0: not at all; x must have a value: an input, or assigned before)
   WHILE (x != 0) { P }`)
-  .replace("\nThere are no other statements", `  x = f(a, b)           call procedure f; arguments are variables or numbers
+  .replace("\nThere are no other statements", `  x = f(a, b)           call procedure f; the arguments are variables
 
 Procedures (at the top level, before or after the main program):
   DEF f(a, b) {
@@ -358,7 +364,8 @@ REQUIRES n >= 0
 
 // fib(0) = 0, fib(1) = 1, fib(i+2) = fib(i) + fib(i+1)
 f = 0                   // fib(i)
-g = 1                   // fib(i+1)
+g = 0                   // fib(i+1)
+g = g + 1
 WHILE (n != 0) {
   // (f, g) = (g, f + g), with h as temporary
   h = 0
@@ -402,7 +409,7 @@ REQUIRES m >= 0 AND n >= 0
 //
 // Without recursion: a stack of the pending values of m, stored in the
 // single number s, with digits m + 1 in base B = m + 2 (the top of the stack
-// is the last digit; s = 0 is the empty stack). Only x = c, x = x ± c and
+// is the last digit; s = 0 is the empty stack). Only x = 0, x = x ± 1 and
 // WHILE (x != 0) are used: an "IF" is a WHILE loop on a flag (0 or 1) that
 // runs at most once, and a value is copied by moving it to a helper and back.
 
@@ -420,8 +427,11 @@ other = 0
 vnz = 0
 
 // B = m + 2, and the stack holds m: s = m + 1
-B = 2
-s = 1
+B = 0
+B = B + 1
+B = B + 1
+s = 0
+s = s + 1
 WHILE (m != 0) { m = m - 1; B = B + 1; s = s + 1 }
 
 WHILE (s != 0) {
@@ -435,7 +445,7 @@ WHILE (s != 0) {
     s = s - 1
     v = v + 1
     k = k - 1
-    z = 1                                 // z = 1 if k = 0
+    z = 0; z = z + 1                      // z = 1 if k = 0
     WHILE (k != 0) { k = k - 1; t = t + 1; z = 0 }
     WHILE (t != 0) { t = t - 1; k = k + 1 }
     WHILE (z != 0) {                      // IF k = 0: a whole block of B
@@ -450,18 +460,18 @@ WHILE (s != 0) {
   v = v - 1                               // the digit was v + 1
 
   // ---- which case?  A: v = 0   B: v > 0, n = 0   C: v > 0, n > 0
-  caseA = 1
+  caseA = 0; caseA = caseA + 1
   other = 0
-  WHILE (v != 0) { v = v - 1; t = t + 1; caseA = 0; other = 1 }
+  WHILE (v != 0) { v = v - 1; t = t + 1; caseA = 0; other = 0; other = other + 1 }
   WHILE (t != 0) { t = t - 1; v = v + 1 }
   caseB = 0
   caseC = 0
   vnz = 0
   WHILE (other != 0) {                    // IF v > 0: test n
     other = 0
-    vnz = 1
-    caseB = 1
-    WHILE (n != 0) { n = n - 1; t = t + 1; caseB = 0; caseC = 1 }
+    vnz = 0; vnz = vnz + 1
+    caseB = 0; caseB = caseB + 1
+    WHILE (n != 0) { n = n - 1; t = t + 1; caseB = 0; caseC = 0; caseC = caseC + 1 }
     WHILE (t != 0) { t = t - 1; n = n + 1 }
   }
 
@@ -483,7 +493,7 @@ WHILE (s != 0) {
   }
   WHILE (caseB != 0) {                    // a(v, 0) = a(v - 1, 1)
     caseB = 0
-    n = 1
+    n = 0; n = n + 1
   }
   WHILE (caseC != 0) {                    // a(v, n) = a(v - 1, a(v, n - 1)):
     caseC = 0                             // also push v, i.e. s = s * B + v + 1
@@ -555,7 +565,8 @@ DEF copy(a) {           // the value of the argument
 }
 
 x = 0                   // fib(i)
-y = 1                   // fib(i+1)
+y = 0                   // fib(i+1)
+y = y + 1
 LOOP (n) {
   z = add(x, y)         // z = x + y
   x = copy(y)           // x = y

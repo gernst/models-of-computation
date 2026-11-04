@@ -81,23 +81,23 @@ for (const lang of LANGUAGES) {
 test("LOOP reads the counter only once", () =>
   assert(run("loop", "LOOP (x1) { x1 = x1 + 1  x0 = x0 + 1 }", [3]) === 3n, "wrong result"));
 test("LOOP reset", () =>
-  assert(run("loop", "x0 = 7\nLOOP (x1) { x0 = 0  x0 = x0 + 1 }", [3]) === 1n, "wrong result"));
+  assert(run("loop", "x0 = 0\nx0 = x0 + 1\nx0 = x0 + 1\nLOOP (x1) { x0 = 0  x0 = x0 + 1 }", [3]) === 1n, "wrong result"));
 test("unbalanced braces are rejected", () => parseError("loop", "LOOP (x1) { x0 := x0 + 1"));
 test("parentheses are required", () => parseError("loop", "LOOP x1 { x0 := x0 + 1 }"));
 test("semicolons are optional", () => {
-  assert(run("loop", "x1 = x1 + 1; x0 = x0 + 2;; LOOP (x1) { x0 = x0 + 1; };", []) === 3n, "LOOP");
-  assert(run("while", "FUN f(a) { a = a + 1; RETURN a; }\nx0 = f(2); WHILE (x0 != 0) { x0 = x0 - 1; };", []) === 0n, "WHILE");
+  assert(run("loop", "x1 = x1 + 1; x0 = x0 + 1; x0 = x0 + 1;; LOOP (x1) { x0 = x0 + 1; };", []) === 3n, "LOOP");
+  assert(run("while", "FUN f(a) { a = a + 1; RETURN a; }\nx1 = 0; x0 = f(x1); WHILE (x0 != 0) { x0 = x0 - 1; };", []) === 0n, "WHILE");
 });
-test("':=' is still accepted", () => assert(run("while", "x0 := 5", []) === 5n, "wrong result"));
+test("':=' is still accepted", () => assert(run("while", "x0 := 0\nx0 := x0 + 1", []) === 1n, "wrong result"));
 test("LOOP has only reset and increment", () => {
-  for (const code of ["x = y", "x = y + 1", "x = x", "x = x + y", "x = x - 1"])
+  for (const code of ["x = y", "x = y + 1", "x = x", "x = x + y", "x = x - 1", "x = 5", "x = x + 2"])
     assert(/only has/.test(parseError("loop", code).message), code);
 });
 test("semicolon inside an assignment is an error", () => parseError("loop", "x0 = ; 1"));
 test("WHILE is rejected in LOOP", () => parseError("loop", "WHILE (x1 != 0) { x1 = x1 - 1 }"));
 test("LOOP is rejected in WHILE", () => parseError("while", "LOOP (x1) { x0 := x0 + 1 }"));
 test("WHILE subtraction goes below 0", () =>
-  assert(run("while", "x1 = x1 - 5\nx0 = add(x1)\nFUN add(a) { RETURN a }", [2]) === -3n, "wrong result"));
+  assert(run("while", "INPUT a\nOUTPUT a\na = a - 1\na = a - 1\na = a - 1", [2]) === -1n, "wrong result"));
 test("WHILE accepts negative inputs", () =>
   assert(run("while", "INPUT a\nOUTPUT a\na = a + 1", [-4]) === -3n, "wrong result"));
 test("LOOP rejects negative inputs", () => {
@@ -111,7 +111,7 @@ test("WHILE check covers negative inputs", () => {
   assert(!bad.ok && bad.inputs[0] < 0n, "no negative counterexample");
 });
 test("step limit stops infinite loops", () => {
-  try { run("while", "x1 := 1  WHILE (x1 != 0) { x1 := x1 + 1 }", [], 1000); }
+  try { run("while", "x1 := 0  x1 := x1 + 1  WHILE (x1 != 0) { x1 := x1 + 1 }", [], 1000); }
   catch (e) { assert(/step limit/.test(e.message), e.message); return; }
   throw new Error("did not stop");
 });
@@ -123,9 +123,9 @@ test("WHILE and WHILE + LOOP: Fibonacci", () => {
   }
 });
 test("WHILE + LOOP: procedures with DEF", () => {
-  const code = "INPUT x, y\nOUTPUT z\nDEF add(a, b) {\n  LOOP (b) { a = a + 1 }\n  RETURN a\n}\nz = add(x, y)\nz = add(z, 10)";
-  assert(run("whileloop", code, [3, 4]) === 17n, "wrong result");
-  assert(run("whileloop", "DEF id(a) { RETURN a }\nx = 5\ny = id(x)\nx = x + 1\nx0 = id(y)", []) === 5n, "copies by value");
+  const code = "INPUT x, y\nOUTPUT z\nDEF add(a, b) {\n  LOOP (b) { a = a + 1 }\n  RETURN a\n}\nz = add(x, y)\nz = add(z, y)";
+  assert(run("whileloop", code, [3, 4]) === 11n, "wrong result");
+  assert(run("whileloop", "DEF id(a) { RETURN a }\nx = 0\nx = x + 1\ny = id(x)\nx = x + 1\nx0 = id(y)", []) === 1n, "copies by value");
   parseError("whileloop", "WHILE (x1 != 0) { DEF f(a) { RETURN a } }");
 });
 test("WHILE has no DEF", () =>
@@ -138,7 +138,7 @@ test("WHILE: Ackermann", () => {
 });
 test("WHILE + LOOP: LOOP reads the count once; negative counts mean no iterations", () => {
   assert(run("whileloop", "LOOP (x1) { x1 = x1 + 1  x0 = x0 + 1 }", [3]) === 3n, "count read once");
-  assert(run("whileloop", "x0 = 5\nLOOP (x1) { x0 = x0 + 1 }", [-2]) === 5n, "negative count");
+  assert(run("whileloop", "x0 = 0\nx0 = x0 + 1\nLOOP (x1) { x0 = x0 + 1 }", [-2]) === 1n, "negative count");
   assert(run("whileloop", "x0 = 0\nLOOP (x1) { WHILE (x1 != 0) { x1 = x1 - 1  x0 = x0 + 1 } }", [2]) === 2n, "LOOP and WHILE");
 });
 test("WHILE + LOOP: LOOP over a variable without a value is an error", () => {
@@ -148,20 +148,21 @@ test("WHILE + LOOP: LOOP over a variable without a value is an error", () => {
 test("WHILE has no LOOP, but points to WHILE + LOOP", () =>
   assert(/WHILE \+ LOOP/.test(parseError("while", "LOOP (x1) { x0 = x0 + 1 }").message), "hint"));
 test("WHILE: function variables are local", () =>
-  assert(run("while", "FUN f(a) { x := 7  RETURN a }\nx := 1\ny := f(x)\nx0 := f(x)", []) === 1n, "x changed"));
+  assert(run("while", "FUN f(a) { x := 0  x := x + 1  x := x + 1  RETURN a }\nx := 0\nx := x + 1\ny := f(x)\nx0 := f(x)", []) === 1n, "x changed"));
 test("WHILE: unknown function", () => parseError("while", "x := g(1)"));
 test("WHILE: wrong number of arguments", () => parseError("while", "FUN f(a) { RETURN a }\nx := f(1, 2)"));
 test("WHILE: RETURN required at the end", () => parseError("while", "FUN f(a) { a := 1 }"));
 test("WHILE: no nested FUN", () => parseError("while", "WHILE (x != 0) { FUN f(a) { RETURN a } }"));
 test("WHILE: recursion depth limit", () => {
-  try { run("while", "FUN f(a) { a := f(a)  RETURN a }\nx := f(1)", []); }
+  try { run("while", "FUN f(a) { a := f(a)  RETURN a }\nx := 0\nx := f(x)", []); }
   catch (e) { assert(e instanceof LangError && /nested/.test(e.message), e.message); return; }
   throw new Error("no error");
 });
 test("WHILE has only reset, increment, decrement and calls", () => {
-  for (const code of ["x = y", "x = y + 1", "x = y - 1", "x = x", "x = x + y"])
-    assert(/only has/.test(parseError("while", code).message), code);
-  assert(run("while", "x0 = 5\nx0 = x0 - 7\nx0 = x0 + 1", []) === -1n, "reset, decrement, increment");
+  for (const code of ["x = y", "x = y + 1", "x = y - 1", "x = x", "x = x + y", "x = 5", "x = x + 2", "x = x - 3"])
+    assert(/only/.test(parseError("while", code).message), code);
+  assert(run("while", "x0 = 0\nx0 = x0 - 1\nx0 = x0 - 1\nx0 = x0 + 1", []) === -1n, "reset, decrement, increment");
+  parseError("whileloop", "DEF f(a) { RETURN a }\nx = f(5)"); // no constants as arguments either
 });
 test("WHILE: no IF", () => {
   for (const code of ["IF (x1 != 0) { x0 = 1 }", "IF (x1 != 0) THEN { x0 = 1 } ELSE { x0 = 2 }", "ELSE { x0 = 1 }"])
@@ -235,8 +236,8 @@ test("wrong number of inputs is an error", () => {
 });
 test("all variables are reported in order", () => {
   const lang = byId("loop"), ctx = { steps: 0, maxSteps: 100, trace: null };
-  lang.run(lang.parse("INPUT n\nOUTPUT r\ntmp = tmp + 1\nr = r + 5"), [4n], ctx);
-  assert([...ctx.vars].map(([x, v]) => x + "=" + v).join(" ") === "n=4 r=5 tmp=1", "got " + [...ctx.vars]);
+  lang.run(lang.parse("INPUT n\nOUTPUT r\ntmp = tmp + 1\nr = r + 1"), [4n], ctx);
+  assert([...ctx.vars].map(([x, v]) => x + "=" + v).join(" ") === "n=4 r=1 tmp=1", "got " + [...ctx.vars]);
 });
 test("check uses named variables", () => {
   const r = checkProgram(byId("loop"), "ENSURES r == n + 2\nINPUT n\nOUTPUT r\nLOOP (n) { r = r + 1 }\nr = r + 1", 3, 100);
@@ -413,9 +414,9 @@ test("LOOP: reading a variable without a value is a warning", () => {
 test("WHILE: reading a variable without a value is a warning", () => {
   const w = c => warningsOf("while", c);
   assert(w("INPUT x\nz = z + 1\nWHILE (q != 0) { x = x - 1 }") === "z@2 q@3", w("INPUT x\nz = z + 1\nWHILE (q != 0) { x = x - 1 }"));
-  assert(w("INPUT x\ny = 1\nWHILE (x != 0) { x = x - 1 }\ny = y + 1") === "", "assigned before the loop");
-  assert(w("INPUT x\nWHILE (x != 0) { y = 1  x = 0 }\ny = y + 1") === "y@3", "assigned only in the loop");
-  assert(w("FUN f(a) { c = c + 1\nRETURN r }\nx0 = f(1)") === "c@1 r@2", w("FUN f(a) { c = c + 1\nRETURN r }\nx0 = f(1)"));
+  assert(w("INPUT x\ny = 0\nWHILE (x != 0) { x = x - 1 }\ny = y + 1") === "", "assigned before the loop");
+  assert(w("INPUT x\nWHILE (x != 0) { y = 0  x = 0 }\ny = y + 1") === "y@3", "assigned only in the loop");
+  assert(w("FUN f(a) { c = c + 1\nRETURN r }\nx0 = 0\nx0 = f(x0)") === "c@1 r@2", "in a function");
   assert(w("x0 = f(u)\nFUN f(a) { RETURN a }") === "u@1", "call arguments");
 });
 
@@ -426,7 +427,7 @@ test("PROGRAM: optional name before everything else", () => {
     try { splitDirectives(code); throw new Error("accepted: " + code); } catch (e) { assert(e instanceof LangError, e.message); }
   assert(run("loop", "PROGRAM Inc\nINPUT x\nOUTPUT y\nLOOP (x) { y = y + 1 }\ny = y + 1", [2]) === 3n, "run with PROGRAM");
   assert(run("primrec", "PROGRAM S\nf = succ", [4]) === 5n, "PRIMREC with PROGRAM");
-  assert(run("loop", "program = program + 2\nx0 = x0 + 1", []) === 1n, "a variable called program");
+  assert(run("loop", "program = program + 1\nx0 = x0 + 1", []) === 1n, "a variable called program");
 });
 test("programs: menu label", () => {
   const now = new Date(2026, 10, 3, 17, 0);
