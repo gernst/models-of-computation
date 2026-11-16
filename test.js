@@ -41,7 +41,7 @@ const SPECS = {
   "loop/Predecessor": "pred == IF n == 0 THEN 0 ELSE n - 1",
   "loop/Subtraction": "d == IF x >= y THEN x - y ELSE 0",
   "while/Addition": "z == x + y",
-  "while/Subtraction": "diff == x - y",
+  "while/Subtraction": "diff == (IF x >= y THEN x - y ELSE 0)",
   "while/Multiplication": "p == x * y",
   "while/Fibonacci": "", // not expressible in ENSURES; see the test below
   "while/Ackermann": "", // see the test below
@@ -96,19 +96,25 @@ test("LOOP has only reset and increment", () => {
 test("semicolon inside an assignment is an error", () => parseError("loop", "x0 = ; 1"));
 test("WHILE is rejected in LOOP", () => parseError("loop", "WHILE (x1 != 0) { x1 = x1 - 1 }"));
 test("LOOP is rejected in WHILE", () => parseError("while", "LOOP (x1) { x0 := x0 + 1 }"));
-test("WHILE subtraction goes below 0", () =>
-  assert(run("while", "INPUT a\nOUTPUT a\na = a - 1\na = a - 1\na = a - 1", [2]) === -1n, "wrong result"));
-test("WHILE accepts negative inputs", () =>
-  assert(run("while", "INPUT a\nOUTPUT a\na = a + 1", [-4]) === -3n, "wrong result"));
+test("WHILE and WHILE + LOOP: subtraction stops at 0", () => {
+  for (const id of ["while", "whileloop"])
+    assert(run(id, "INPUT a\nOUTPUT a\na = a - 1\na = a - 1\na = a - 1", [2]) === 0n, id);
+});
+test("WHILE and WHILE + LOOP reject negative inputs", () => {
+  for (const id of ["while", "whileloop"]) {
+    try { run(id, "INPUT a\nOUTPUT a\na = a + 1", [-4]); } catch (e) { assert(e instanceof LangError, e.message); continue; }
+    throw new Error(id + ": no error");
+  }
+});
 test("LOOP rejects negative inputs", () => {
   try { run("loop", "x0 = x0 + 1", [-1]); } catch (e) { assert(e instanceof LangError, e.message); return; }
   throw new Error("no error");
 });
-test("WHILE check covers negative inputs", () => {
+test("WHILE check covers inputs from 0", () => {
   const r = checkProgram(byId("while"), "INPUT x\nOUTPUT y\nENSURES y >= x\ny = id(x)\nFUN id(a) { RETURN a }", 3, 100);
-  assert(r.ok && r.tested === 7, "tested " + r.tested);
-  const bad = checkProgram(byId("while"), "INPUT x\nOUTPUT y\nENSURES y >= 0\ny = id(x)\nFUN id(a) { RETURN a }", 3, 100);
-  assert(!bad.ok && bad.inputs[0] < 0n, "no negative counterexample");
+  assert(r.ok && r.tested === 4, "tested " + r.tested);
+  const bad = checkProgram(byId("while"), "INPUT x\nOUTPUT y\nENSURES y + 1 == x\ny = 0\nWHILE (x != 0) { x = x - 1; y = y + 1 }\ny = y - 1", 3, 100);
+  assert(!bad.ok && bad.inputs[0] === 0n, "the only counterexample is 0: 0 - 1 = 0");
 });
 test("step limit stops infinite loops", () => {
   try { run("while", "x1 := 0  x1 := x1 + 1  WHILE (x1 != 0) { x1 := x1 + 1 }", [], 1000); }
@@ -136,9 +142,9 @@ test("WHILE: Ackermann", () => {
   for (const [m, n] of [[0, 0], [0, 3], [1, 0], [1, 2], [2, 0], [2, 1], [2, 2], [3, 0]])
     assert(run("while", ex.code, [m, n], 1e7) === BigInt(A(m, n)), `A(${m}, ${n})`);
 });
-test("WHILE + LOOP: LOOP reads the count once; negative counts mean no iterations", () => {
+test("WHILE + LOOP: LOOP reads the count once; count 0 means no iterations", () => {
   assert(run("whileloop", "LOOP (x1) { x1 = x1 + 1  x0 = x0 + 1 }", [3]) === 3n, "count read once");
-  assert(run("whileloop", "x0 = 0\nx0 = x0 + 1\nLOOP (x1) { x0 = x0 + 1 }", [-2]) === 1n, "negative count");
+  assert(run("whileloop", "x0 = 0\nx0 = x0 + 1\nLOOP (x1) { x0 = x0 + 1 }", [0]) === 1n, "count 0");
   assert(run("whileloop", "x0 = 0\nLOOP (x1) { WHILE (x1 != 0) { x1 = x1 - 1  x0 = x0 + 1 } }", [2]) === 2n, "LOOP and WHILE");
 });
 test("WHILE + LOOP: LOOP over a variable without a value is an error", () => {
@@ -161,7 +167,7 @@ test("WHILE: recursion depth limit", () => {
 test("WHILE has only reset, increment, decrement and calls", () => {
   for (const code of ["x = y", "x = y + 1", "x = y - 1", "x = x", "x = x + y", "x = 5", "x = x + 2", "x = x - 3"])
     assert(/only/.test(parseError("while", code).message), code);
-  assert(run("while", "x0 = 0\nx0 = x0 - 1\nx0 = x0 - 1\nx0 = x0 + 1", []) === -1n, "reset, decrement, increment");
+  assert(run("while", "x0 = 0\nx0 = x0 + 1\nx0 = x0 + 1\nx0 = x0 - 1", []) === 1n, "reset, increment, decrement");
   parseError("whileloop", "DEF f(a) { RETURN a }\nx = f(5)"); // no constants as arguments either
 });
 test("WHILE: no IF", () => {

@@ -1,5 +1,5 @@
 "use strict";
-// WHILE programs over the integers, and WHILE + LOOP: the same with LOOP (x) { P } in addition.
+// WHILE programs over the natural numbers, and WHILE + LOOP: the same with LOOP (x) { P } in addition.
 
 const WHILE_KEYWORDS = ["WHILE", "INPUT", "OUTPUT", "FUN", "RETURN"];
 const WHILE_LOOP_KEYWORDS = [...WHILE_KEYWORDS, "LOOP", "DEF"]; // DEF: procedures, like FUN
@@ -198,6 +198,7 @@ function parseWhileStmt(p) {
 // ---------------------------------------------------------------- interpreter
 
 function runWhile(program, inputs, ctx) {
+  requireNaturals(inputs);
   const env = initVars(program, inputs, ctx);
   execWhile(program.body, env, ctx, { funs: program.funs, depth: 0, name: "" });
   return env.get(program.output);
@@ -210,7 +211,7 @@ function execWhile(stmts, env, ctx, frame) {
     if (s.type === "assign") {
       tick(ctx);
       const v = s.y === null ? 0n : env.get(s.y);
-      env.set(s.x, s.op === "+" ? v + s.c : v - s.c); // integers: may become negative
+      env.set(s.x, s.op === "+" ? v + s.c : (v > s.c ? v - s.c : 0n)); // naturals: x - 1 stops at 0
       record(ctx, s.line, () => where + showVars(env));
     } else if (s.type === "call") {
       tick(ctx);
@@ -228,7 +229,7 @@ function execWhile(stmts, env, ctx, frame) {
       env.set(s.x, v);
       record(ctx, s.line, () => where + showVars(env));
     } else if (s.type === "loop") {
-      const n = env.get(s.x); // read once, at the start; n <= 0: no iterations
+      const n = env.get(s.x); // read once, at the start; n = 0: no iterations
       record(ctx, s.line, () => `${where}LOOP (${s.x}): ${n > 0n ? n : 0n} iteration(s)`);
       for (let i = 0n; i < n; i++) {
         tick(ctx);
@@ -248,7 +249,7 @@ function execWhile(stmts, env, ctx, frame) {
 
 // ---------------------------------------------------------------- languages
 
-const WHILE_HELP = `WHILE programs compute on integers …, -2, -1, 0, 1, 2, …
+const WHILE_HELP = `WHILE programs compute on natural numbers 0, 1, 2, …
 
 Header (optional):
   PROGRAM name          the name of the program
@@ -258,7 +259,7 @@ Header (optional):
 Statements (keywords in any case; one per line, or separated by optional semicolons):
   x = 0                 reset x to 0
   x = x + 1             increment x by 1
-  x = x - 1             decrement x by 1             (may become negative)
+  x = x - 1             decrement x by 1, but not below 0   (0 - 1 = 0)
   P; P                  execute the two programs in sequence   (the ; may be a line break)
   WHILE (x != 0) { P }  repeat P as long as x is not 0
                         (the condition is always a single test  x != 0)
@@ -270,9 +271,9 @@ before assigning it gives a warning.
 Comments: // until the end of the line`;
 
 const WHILE_LOOP_HELP = WHILE_HELP
-  .replace("WHILE programs compute on integers", "WHILE + LOOP programs: WHILE programs with LOOP in addition, on integers")
+  .replace("WHILE programs compute on natural numbers", "WHILE + LOOP programs: WHILE programs with LOOP in addition, on natural numbers")
   .replace("  WHILE (x != 0) { P }", `  LOOP (x) { P }        repeat P exactly n times, n = value of x at the start
-                        (n <= 0: not at all; x must have a value: an input, or assigned before)
+                        (n = 0: not at all; x must have a value: an input, or assigned before)
   WHILE (x != 0) { P }`)
   .replace("\nThere are no other statements", `  x = f(a, b)           call procedure f; the arguments are variables
 
@@ -290,7 +291,6 @@ There are no other statements`)
 LANGUAGES.push({
   id: "while",
   name: "WHILE",
-  integers: true,
   help: WHILE_HELP,
 
   parse: parseWhile,
@@ -520,7 +520,6 @@ WHILE (n != 0) { n = n - 1; a = a + 1 }
 LANGUAGES.push({
   id: "whileloop",
   name: "WHILE + LOOP",
-  integers: true,
   help: WHILE_LOOP_HELP,
   parse: code => parseWhile(code, true),
   run: runWhile,
