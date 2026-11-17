@@ -1,7 +1,8 @@
 "use strict";
 // The user's own programs, kept in this browser (localStorage), separately for each language.
 //
-// Every program the user writes or edits is an entry  { id, code, inputs, edited, permalink? }.
+// Every program the user writes or edits is an entry  { id, code, inputs, edited, permalink?, integers? }.
+// integers: true means it runs with the earlier semantics over the integers (see lang-while.js).
 // Unchanged examples are not stored. Loading an example or another program never deletes
 // anything. Shared programs (with a permalink) are never changed: editing one creates a new
 // entry, so the shared version stays exactly as it was shared.
@@ -52,17 +53,17 @@ function recordEdit(lang, list, currentId, code, inputs) {
     return cur.id;
   }
   if (!cur && isExample(lang, code)) return null;
-  // a new program: an edited example, or an edited copy of a shared program
-  const p = { id: newProgramId(), code, inputs, edited: Date.now() };
+  // a new program: an edited example, or an edited copy of a shared program (keeps its semantics)
+  const p = { id: newProgramId(), code, inputs, edited: Date.now(), ...(cur?.integers ? { integers: true } : {}) };
   list.push(p);
   return p.id;
 }
 
 /** Add a program (e.g. one opened through a permalink) unless an entry with this permalink exists. */
-function addProgram(list, code, inputs, permalink) {
+function addProgram(list, code, inputs, permalink, integers = false) {
   const old = permalink && list.find(p => p.permalink === permalink);
   if (old) return old.id;
-  const p = { id: newProgramId(), code, inputs, edited: Date.now(), permalink };
+  const p = { id: newProgramId(), code, inputs, edited: Date.now(), permalink, ...(integers ? { integers: true } : {}) };
   list.push(p);
   return p.id;
 }
@@ -75,7 +76,7 @@ function programLabel(p, now = new Date()) {
   const when = sameDay ? time : d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) + " " + time;
   const lines = p.code.split("\n").filter(l => l.trim() !== "").length;
   const name = programName(p.code);
-  return (name ? `${name} · ${when}` : `${when} · ${lines} line${lines === 1 ? "" : "s"}`) + (p.permalink ? " · shared" : "");
+  return (name ? `${name} · ${when}` : `${when} · ${lines} line${lines === 1 ? "" : "s"}`) + (p.permalink ? " · shared" : "") + (p.integers ? " · ℤ" : "");
 }
 
 /** Remove an entry; returns it (for undo) or null. */

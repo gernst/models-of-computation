@@ -12,8 +12,8 @@ function exportPrograms(languages) {
   const programs = {};
   for (const lang of languages) {
     const list = loadPrograms(lang);
-    if (list.length) programs[lang.id] = list.map(({ code, inputs, edited, permalink }) =>
-      ({ code, inputs, edited, ...(permalink ? { permalink } : {}) }));
+    if (list.length) programs[lang.id] = list.map(({ code, inputs, edited, permalink, integers }) =>
+      ({ code, inputs, edited, ...(permalink ? { permalink } : {}), ...(integers ? { integers } : {}) }));
   }
   return { format: EXPORT_FORMAT, version: 1, exported: new Date().toISOString(), programs };
 }
@@ -41,6 +41,7 @@ function planImport(data, languages) {
         id: newProgramId(), code: raw.code, inputs: typeof raw.inputs === "string" ? raw.inputs : "",
         edited: Number.isFinite(raw.edited) ? raw.edited : Date.now(),
         ...(typeof raw.permalink === "string" ? { permalink: raw.permalink } : {}),
+        ...(raw.integers === true ? { integers: true } : {}),
       };
       const name = programName(p.code);
       const same = q => name !== null && programName(q.code) === name && (q.code === p.code || q.edited === p.edited);

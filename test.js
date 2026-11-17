@@ -106,6 +106,27 @@ test("WHILE and WHILE + LOOP reject negative inputs", () => {
     throw new Error(id + ": no error");
   }
 });
+test("WHILE and WHILE + LOOP: the earlier semantics over the integers (ctx.integers)", () => {
+  for (const id of ["while", "whileloop"]) {
+    const lang = byId(id), code = "INPUT a\nOUTPUT a\na = a - 1\na = a - 1\na = a - 1";
+    assert(lang.run(lang.parse(code), [2n], { steps: 0, maxSteps: 100, trace: null, integers: true }) === -1n, id + ": 2 - 3");
+    assert(lang.run(lang.parse(code), [-4n], { steps: 0, maxSteps: 100, trace: null, integers: true }) === -7n, id + ": negative input");
+    assert(lang.integersOption && lang.integersBefore === Date.parse("2026-11-17T00:00:00+01:00"), id + ": cutoff");
+  }
+  const spec = "INPUT x\nOUTPUT y\nREQUIRES x >= 0\nENSURES y + 1 == x\ny = 0\nWHILE (x != 0) { x = x - 1; y = y + 1 }\ny = y - 1";
+  assert(!checkProgram(byId("while"), spec, 3, 100).ok, "naturals: 0 - 1 = 0 is a counterexample");
+  const r = checkProgram(byId("while"), spec, 3, 100, true);
+  assert(r.ok && r.tested === 4 && r.skipped === 3, "integers: inputs from -3 to 3, tested " + r.tested);
+});
+test("the integers flag is kept for shared programs and their edited copies", () => {
+  const list = [];
+  const id = addProgram(list, "x0 = x0 - 1", "", "abc", true);
+  assert(list[0].integers === true, "addProgram");
+  const copy = recordEdit(byId("while"), list, id, "x0 = x0 - 1\n", "");
+  assert(copy !== id && list.find(p => p.id === copy).integers === true, "edited copy");
+  addProgram(list, "x0 = 0", "", "def");
+  assert(!list.find(p => p.permalink === "def").integers, "default off");
+});
 test("LOOP rejects negative inputs", () => {
   try { run("loop", "x0 = x0 + 1", [-1]); } catch (e) { assert(e instanceof LangError, e.message); return; }
   throw new Error("no error");

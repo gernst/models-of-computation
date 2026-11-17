@@ -197,8 +197,10 @@ function parseWhileStmt(p) {
 
 // ---------------------------------------------------------------- interpreter
 
+// ctx.integers: the earlier semantics over the integers (x - 1 may become negative, negative
+// inputs are allowed), still needed to grade solutions written before the change; see integersBefore.
 function runWhile(program, inputs, ctx) {
-  requireNaturals(inputs);
+  if (!ctx.integers) requireNaturals(inputs);
   const env = initVars(program, inputs, ctx);
   execWhile(program.body, env, ctx, { funs: program.funs, depth: 0, name: "" });
   return env.get(program.output);
@@ -211,7 +213,8 @@ function execWhile(stmts, env, ctx, frame) {
     if (s.type === "assign") {
       tick(ctx);
       const v = s.y === null ? 0n : env.get(s.y);
-      env.set(s.x, s.op === "+" ? v + s.c : (v > s.c ? v - s.c : 0n)); // naturals: x - 1 stops at 0
+      const d = ctx.integers || v > s.c ? v - s.c : 0n; // naturals: x - 1 stops at 0
+      env.set(s.x, s.op === "+" ? v + s.c : d);
       record(ctx, s.line, () => where + showVars(env));
     } else if (s.type === "call") {
       tick(ctx);
@@ -248,6 +251,10 @@ function execWhile(stmts, env, ctx, frame) {
 }
 
 // ---------------------------------------------------------------- languages
+
+// Until 16 Nov 2026, WHILE and WHILE + LOOP computed on the integers. Programs shared before this
+// time are opened with "Integers" switched on (the time comes from the permalink server, see loadShared).
+const WHILE_INTEGERS_BEFORE = Date.parse("2026-11-17T00:00:00+01:00");
 
 const WHILE_HELP = `WHILE programs compute on natural numbers 0, 1, 2, …
 
@@ -292,6 +299,8 @@ LANGUAGES.push({
   id: "while",
   name: "WHILE",
   help: WHILE_HELP,
+  integersOption: true, // the "Integers" checkbox: the earlier semantics (ctx.integers)
+  integersBefore: WHILE_INTEGERS_BEFORE,
 
   parse: parseWhile,
   run: runWhile,
@@ -304,7 +313,6 @@ LANGUAGES.push({
 `PROGRAM Addition
 INPUT x, y
 OUTPUT z
-REQUIRES x >= 0 AND y >= 0
 
 z = 0
 WHILE (x != 0) {
@@ -317,18 +325,19 @@ WHILE (y != 0) {
 }
 ` },
     {
-      name: "Subtraction", inputs: "3, 5", code:
+      name: "Subtraction", inputs: "5, 3", code:
 `PROGRAM Subtraction
 INPUT x, y
 OUTPUT diff
-REQUIRES x >= 0 AND y >= 0
+
+// modified subtraction: x - y, but never below 0
 
 diff = 0
 WHILE (x != 0) {        // diff = x
   diff = diff + 1
   x = x - 1
 }
-WHILE (y != 0) {        // diff = diff - y, may become negative
+WHILE (y != 0) {        // diff = diff - y, but not below 0
   diff = diff - 1
   y = y - 1
 }
@@ -338,7 +347,6 @@ WHILE (y != 0) {        // diff = diff - y, may become negative
 `PROGRAM Multiplication
 INPUT x, y
 OUTPUT p
-REQUIRES x >= 0 AND y >= 0
 
 p = 0
 WHILE (y != 0) {
@@ -360,7 +368,6 @@ WHILE (y != 0) {
 `PROGRAM Fibonacci
 INPUT n
 OUTPUT f
-REQUIRES n >= 0
 
 // fib(0) = 0, fib(1) = 1, fib(i+2) = fib(i) + fib(i+1)
 f = 0                   // fib(i)
@@ -401,7 +408,6 @@ WHILE (n != 0) {
 `PROGRAM Ackermann
 INPUT m, n
 OUTPUT a
-REQUIRES m >= 0 AND n >= 0
 
 // a(0, n)         = n + 1
 // a(m + 1, 0)     = a(m, 1)
@@ -521,6 +527,8 @@ LANGUAGES.push({
   id: "whileloop",
   name: "WHILE + LOOP",
   help: WHILE_LOOP_HELP,
+  integersOption: true,
+  integersBefore: WHILE_INTEGERS_BEFORE,
   parse: code => parseWhile(code, true),
   run: runWhile,
   keywords: WHILE_LOOP_KEYWORDS,
@@ -532,7 +540,6 @@ LANGUAGES.push({
 `PROGRAM Sum
 INPUT n
 OUTPUT s
-REQUIRES n >= 0
 
 // s = n + (n - 1) + … + 1: WHILE counts n down, LOOP adds n to s
 s = 0
@@ -548,7 +555,6 @@ WHILE (n != 0) {
 `PROGRAM Fibonacci
 INPUT n
 OUTPUT x
-REQUIRES n >= 0
 
 // fib(0) = 0, fib(1) = 1, fib(i+2) = fib(i) + fib(i+1)
 
@@ -577,7 +583,7 @@ LOOP (n) {
 `PROGRAM Division
 INPUT x, y
 OUTPUT q
-REQUIRES x >= 0 AND y > 0 AND x % y == 0
+REQUIRES y > 0 AND x % y == 0
 
 DEF div(a, b) {         // a / b, if a is a multiple of b and b > 0
   q = 0

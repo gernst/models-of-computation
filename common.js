@@ -403,18 +403,18 @@ function signatureOf(lang, program, exprs = []) {
 
 /**
  * Run the program on all inputs 0..maxValue (or -maxValue..maxValue for languages
- * with `integers: true`) that satisfy REQUIRES, and test ENSURES.
+ * with `integers: true`, or with `integers` given) that satisfy REQUIRES, and test ENSURES.
  * Returns { ok: true, names, tested, skipped } or
  *         { ok: false, names, output, inputs, result?, line?, message?, tested, skipped }.
  */
-function checkProgram(lang, source, maxValue, maxSteps) {
+function checkProgram(lang, source, maxValue, maxSteps, integers = !!lang.integers) {
   const { code, requires, ensures } = splitDirectives(source);
   if (ensures.length === 0)
     throw new LangError("nothing to check: add a line such as   ENSURES x0 == x1 + x2");
   const program = lang.parse(code);
   const { inputs: names, output } = signatureOf(lang, program, [...requires, ...ensures].map(d => d.expr));
   const arity = names.length;
-  const min = lang.integers ? -maxValue : 0;
+  const min = integers ? -maxValue : 0;
   const base = maxValue - min + 1;
   const total = base ** arity;
   if (total > 100000) throw new LangError(`too many test cases (${total}); lower the maximum test value`);
@@ -431,7 +431,7 @@ function checkProgram(lang, source, maxValue, maxSteps) {
     tested++;
     let result;
     try {
-      result = lang.run(program, inputs, { steps: 0, maxSteps, trace: null });
+      result = lang.run(program, inputs, { steps: 0, maxSteps, trace: null, integers });
     } catch (e) {
       if (e instanceof StepLimitError) return { ok: false, ...info, tested, message: e.message };
       throw e;

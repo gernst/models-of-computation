@@ -25,7 +25,7 @@ function selectLanguage(id) {
   $("language").value = lang.id;
   save("language", lang.id);
   $("help").textContent = lang.name + "\n\n" + lang.help;
-  updateMinValue();
+  $("integersLabel").hidden = !lang.integersOption;
   programs = loadPrograms(lang);
   const last = load("open:" + lang.id) ?? ""; // "e<index>" or "p<id>", see rememberOpen
   const p = programs.find(p => "p" + p.id === last);
@@ -58,6 +58,7 @@ function showExample(i) {
   current = null;
   rememberOpen("e" + i);
   setEditor(ex.code, ex.inputs);
+  setIntegers(false);
   updateMenu();
   setPermalink(null);
 }
@@ -66,11 +67,32 @@ function showProgram(p) {
   current = p.id;
   rememberOpen("p" + p.id);
   setEditor(p.code, p.inputs);
+  setIntegers(!!p.integers);
   updateMenu();
   setPermalink(p.permalink);
 }
 
 const currentProgram = () => programs.find(p => p.id === current);
+
+/** Does the program run over the integers? Always for such languages; for WHILE, the earlier semantics. */
+const integersOn = () => !!lang.integers || (!!lang.integersOption && $("integers").checked);
+
+function setIntegers(on) {
+  $("integers").checked = on;
+  updateMinValue();
+}
+
+/** The "Integers" checkbox belongs to the program in the editor (an example: only until it is edited). */
+function integersChanged() {
+  const p = currentProgram();
+  if (p) {
+    if ($("integers").checked) p.integers = true; else delete p.integers;
+    store();
+    updateMenu();
+  }
+  updateMinValue();
+  show("", "");
+}
 
 /** Rebuild the Example menu: the examples, then the user's programs (newest first). */
 function updateMenu() {
@@ -108,6 +130,8 @@ function edited() {
   const before = current;
   current = recordEdit(lang, programs, current, editor.value, $("inputs").value);
   if (current && current !== before) rememberOpen("p" + current);
+  const p = currentProgram();
+  if (p && $("integers").checked && lang.integersOption) p.integers = true; // e.g. an edited example
   store();
   updateMenu();
   if (current !== before) setPermalink(null); // a new program has no link (yet)
@@ -237,10 +261,10 @@ function selectLine(line) {
 
 function parseInputs(text) {
   const parts = text.split(/[\s,;]+/).filter(s => s !== "");
-  const pattern = lang.integers ? /^-?\d+$/ : /^\d+$/;
+  const pattern = integersOn() ? /^-?\d+$/ : /^\d+$/;
   for (const s of parts)
     if (!pattern.test(s))
-      throw new LangError(`inputs must be ${lang.integers ? "integers" : "natural numbers"}, but got '${s}'`);
+      throw new LangError(`inputs must be ${integersOn() ? "integers" : "natural numbers"}, but got '${s}'`);
   return parts.map(BigInt);
 }
 
@@ -251,7 +275,7 @@ function warningsText(program) {
 }
 
 function run() {
-  const ctx = { steps: 0, maxSteps: Number($("maxSteps").value) || 1000000, trace: $("trace").checked ? [] : null };
+  const ctx = { steps: 0, maxSteps: Number($("maxSteps").value) || 1000000, trace: $("trace").checked ? [] : null, integers: integersOn() };
   const traceText = () => !ctx.trace ? "" :
     "\n\nTrace:\n" + ctx.trace.map(t => `line ${String(t.line).padStart(3)}:  ${t.text}`).join("\n") +
     (ctx.trace.length >= MAX_TRACE ? `\n… (only the first ${MAX_TRACE} entries are shown)` : "");
@@ -276,11 +300,11 @@ function run() {
 function check() {
   const maxValue = Math.max(0, Number($("maxValue").value) || 0);
   try {
-    const r = checkProgram(lang, editor.value, maxValue, Number($("maxSteps").value) || 1000000);
+    const r = checkProgram(lang, editor.value, maxValue, Number($("maxSteps").value) || 1000000, integersOn());
     const warnings = warningsText(lang.parse(splitDirectives(editor.value).code));
     const skipped = r.skipped ? `, ${r.skipped} skipped by REQUIRES` : "";
     if (r.ok) {
-      show(warnings + `✓ All ${r.tested} test case(s) passed (inputs from ${lang.integers ? -maxValue : 0} to ${maxValue}${skipped}).\n` +
+      show(warnings + `✓ All ${r.tested} test case(s) passed (inputs from ${integersOn() ? -maxValue : 0} to ${maxValue}${skipped}).\n` +
            "This is testing, not a proof.", "ok");
       return;
     }
@@ -295,9 +319,9 @@ function check() {
   }
 }
 
-/** The lower bound shown next to "Check": 0, or -max for languages over the integers. */
+/** The lower bound shown next to "Check": 0, or -max over the integers. */
 function updateMinValue() {
-  $("minValue").textContent = lang.integers ? String(-Math.max(0, Number($("maxValue").value) || 0)) : "0";
+  $("minValue").textContent = integersOn() ? String(-Math.max(0, Number($("maxValue").value) || 0)) : "0";
 }
 
 // ---------------------------------------------------------------- permalinks (see permalink.js)
@@ -346,14 +370,21 @@ async function loadShared() {
   const m = /^#ex=([A-Za-z0-9_-]+)$/.exec(location.hash);
   if (!m || !permalinksOn) return;
   try {
-    const { language, code } = await loadPermalink(m[1]);
+    const { language, code, saved } = await loadPermalink(m[1]);
     const l = LANGUAGES.find(l => l.name.toUpperCase() === language.toUpperCase());
     if (!l) throw new Error(`unknown language '${language}'`);
     if (l !== lang) selectLanguage(l.id);
-    const id = addProgram(programs, code, "", m[1]);
+    // shared before the semantics changed: run it with the earlier semantics (see integersBefore)
+    const old = !!l.integersOption && saved !== null && saved < l.integersBefore;
+    const id = addProgram(programs, code, "", m[1], old);
     store();
-    showProgram(programs.find(p => p.id === id));
-    show("Shared program loaded.", "ok");
+    const p = programs.find(p => p.id === id);
+    showProgram(p);
+    const when = saved === null ? "" : ` (shared ${new Date(saved).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })})`;
+    const note = !l.integersOption ? "" : p.integers
+      ? "\nIt runs over the integers, as before 16 Nov: x - 1 may become negative (checkbox Integers)."
+      : saved === null ? "\nThe server does not say when it was shared: for a program from before 16 Nov, switch on Integers." : "";
+    show(`Shared program loaded${when}.${note}`, "ok");
   } catch (e) {
     show("Could not load the shared program: " + e.message, "bad");
   }
@@ -361,6 +392,7 @@ async function loadShared() {
 
 // ---------------------------------------------------------------- wiring
 $("maxValue").addEventListener("input", updateMinValue);
+$("integers").addEventListener("change", integersChanged);
 
 LANGUAGES.forEach(l => option($("language"), l.id, l.name));
 $("language").addEventListener("change", e => selectLanguage(e.target.value));

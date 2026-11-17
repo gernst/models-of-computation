@@ -4,6 +4,8 @@
 //   GET  experiments/perma/<id>.prog                                    → the stored program text
 // The stored text starts with a line  LANGUAGE <name>,  which is removed again when loading.
 // Our own links look like  index.html#ex=<id>.
+// The time a program was shared is the Last-Modified header of its .prog file (readable across
+// origins too: it is a CORS-safelisted header).
 //
 // PERMALINK_SERVER is where the service is, ending in "/":
 //   "./"                    the directory of this page: the page must be installed next to
@@ -41,6 +43,7 @@ function permalinkIdFrom(html) {
   return m[1];
 }
 
+/** The response's text and its Last-Modified time (ms, or null if the server sends none). */
 async function fetchText(url, options) {
   let r;
   try {
@@ -50,16 +53,21 @@ async function fetchText(url, options) {
   }
   if (r.status === 404) throw new Error("there is no shared program with this link");
   if (!r.ok) throw new Error(`the permalink server answered ${r.status}`);
-  return r.text();
+  const modified = Date.parse(r.headers.get("Last-Modified") ?? "");
+  return { text: await r.text(), modified: Number.isNaN(modified) ? null : modified };
 }
 
 /** Store a program; returns the id. */
 async function savePermalink(langName, code) {
   const body = new URLSearchParams({ prog1: encodePermalinkProgram(langName, code) });
-  return permalinkIdFrom(await fetchText(PERMALINK_SERVER + "save-perma.php", { method: "POST", body }));
+  return permalinkIdFrom((await fetchText(PERMALINK_SERVER + "save-perma.php", { method: "POST", body })).text);
 }
 
-/** Load a stored program; returns { language, code }. */
+/**
+ * Load a stored program; returns { language, code, saved }. `saved` is when it was shared (ms), or null:
+ * the Last-Modified time of the .prog file, which the server writes once and never changes.
+ */
 async function loadPermalink(id) {
-  return decodePermalinkProgram(await fetchText(PERMALINK_SERVER + "experiments/perma/" + encodeURIComponent(id) + ".prog"));
+  const { text, modified } = await fetchText(PERMALINK_SERVER + "experiments/perma/" + encodeURIComponent(id) + ".prog");
+  return { ...decodePermalinkProgram(text), saved: modified };
 }
